@@ -1,0 +1,6 @@
+{
+  "name": "Beauty Space",
+  "description": "Professional studio manager for beauty salons, featuring real-time financial tracking, appointment scheduling, customizable special pricing, and client relationship management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
