@@ -177,7 +177,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
               {activeTab === 'agenda' && 'Agenda de Citas'}
               {activeTab === 'clientas' && 'Dossier de Clientas'}
               {activeTab === 'servicios' && 'Catálogo de Servicios'}
-              {activeTab === 'especiales' && 'Precios Especiales'}
               {activeTab === 'ajustes' && 'Configuración & Auditoría'}
             </h1>
             <p className="text-xs text-on-surface-variant/75 font-medium mt-0.5">

@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { FinancialMovement, Client } from '../types';
-import { Plus, Minus, Search, Filter, Trash2, ArrowUpRight, ArrowDownRight, TrendingUp, DollarSign, Wallet, Calendar, AlertCircle, Sparkles, Download, Calculator, Percent, Info, HelpCircle, ChevronDown } from 'lucide-react';
-import { buildCsvString } from '../utils/csv';
+import { Plus, Minus, Search, Filter, Trash2, ArrowUpRight, ArrowDownRight, TrendingUp, DollarSign, Wallet, Calendar, AlertCircle, Sparkles, Calculator, Percent, Info, HelpCircle, ChevronDown } from 'lucide-react';
 import { useDebounce } from '../hooks/useDebounce';
 import { formatMoney } from '../utils/formatters';
+import { Modal } from './Modal';
 
 interface DashboardProps {
   movements: FinancialMovement[];
@@ -23,6 +23,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   paymentMethods
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'movimientos' | 'nuevo-ingreso' | 'nuevo-egreso'>('overview');
+  const [movementToDelete, setMovementToDelete] = useState<FinancialMovement | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -266,165 +267,135 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setActiveSubTab('movimientos');
   };
 
-  // ==================== EXPORT SYSTEM (CSV GENERATOR - OWASP SANITIZED) ====================
-  const handleCSVExport = () => {
-    if (movements.length === 0) {
-      alert('No hay movimientos de caja para exportar.');
-      return;
-    }
-
-    const headers = [
-      'ID',
-      'Fecha',
-      'Tipo',
-      'Concepto',
-      'Categoria',
-      'MetodoPago',
-      'Clienta',
-      'Monto',
-      'CostoInsumos',
-      'ComisionStaff',
-      'Notas'
-    ];
-
-    const dataRows = movements.map((m) => [
-      m.id,
-      m.date,
-      m.type === 'income' ? 'INGRESO' : 'EGRESO',
-      m.description,
-      m.category,
-      m.paymentMethod || '',
-      m.clientName || '',
-      m.amount,
-      m.costOfSupplies || 0,
-      m.staffCommission || 0,
-      m.notes || ''
-    ]);
-
-    const csvContent = buildCsvString(headers, dataRows);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `BeautySpace_Finanzas_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   // ==================== VISUAL COMPONENT RENDER ====================
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       
       {/* Sub-Tabs Row */}
-      <div className="flex border-b border-outline-variant/30 overflow-x-auto pb-0.5 gap-2 scrollbar-none justify-between items-center">
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between gap-2 pb-1 border-b border-outline-variant/30">
+        {/* Navigation Tabs */}
+        <div className="flex gap-1 overflow-x-auto scrollbar-none p-0.5 bg-surface-container/60 sm:bg-transparent rounded-xl sm:rounded-none">
           <button
             onClick={() => setActiveSubTab('overview')}
-            className={`px-5 py-2.5 font-serif text-xs font-black uppercase tracking-widest border-b-2 transition-all shrink-0 ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 font-serif text-[11px] sm:text-xs font-black uppercase tracking-wider sm:tracking-widest rounded-lg sm:rounded-none sm:border-b-2 transition-all shrink-0 cursor-pointer active:scale-95 motion-reduce:transform-none ${
               activeSubTab === 'overview'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-on-surface-variant/70 hover:text-primary'
+                ? 'bg-white sm:bg-transparent text-primary shadow-xs sm:shadow-none sm:border-primary'
+                : 'text-on-surface-variant/70 hover:text-primary sm:border-transparent'
             }`}
           >
-            Resumen General
+            <span className="sm:hidden">Resumen</span>
+            <span className="hidden sm:inline">Resumen General</span>
           </button>
           <button
             onClick={() => setActiveSubTab('movimientos')}
-            className={`px-5 py-2.5 font-serif text-xs font-black uppercase tracking-widest border-b-2 transition-all shrink-0 ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 font-serif text-[11px] sm:text-xs font-black uppercase tracking-wider sm:tracking-widest rounded-lg sm:rounded-none sm:border-b-2 transition-all shrink-0 cursor-pointer active:scale-95 motion-reduce:transform-none ${
               activeSubTab === 'movimientos'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-on-surface-variant/70 hover:text-primary'
+                ? 'bg-white sm:bg-transparent text-primary shadow-xs sm:shadow-none sm:border-primary'
+                : 'text-on-surface-variant/70 hover:text-primary sm:border-transparent'
             }`}
           >
-            Historial de Caja (Ledger)
+            Historial de Caja
           </button>
         </div>
 
-        <div className="flex gap-2 items-center shrink-0">
-          <button
-            onClick={handleCSVExport}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant/40 text-[10px] font-bold text-on-surface hover:bg-surface-container transition-all"
-            title="Exportar a Excel o CSV para Valentina"
-          >
-            <Download size={12} /> Exportar Excel
-          </button>
+        {/* Minimalist, Discreet Action Controls for Ingreso / Egreso */}
+        <div className="flex items-center shrink-0 bg-surface-container/60 p-0.5 rounded-xl border border-outline-variant/25">
           <button
             onClick={() => setActiveSubTab('nuevo-ingreso')}
-            className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sage text-white hover:bg-sage/95 flex items-center gap-1 transition-all shadow-xs ${
-              activeSubTab === 'nuevo-ingreso' ? 'ring-2 ring-sage/40 scale-105' : ''
+            title="Registrar Ingreso (+)"
+            aria-label="Registrar Ingreso"
+            className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer active:scale-95 motion-reduce:transform-none ${
+              activeSubTab === 'nuevo-ingreso'
+                ? 'bg-white text-primary shadow-xs ring-1 ring-outline-variant/30'
+                : 'text-on-surface-variant/75 hover:text-primary hover:bg-white/50'
             }`}
           >
-            <Plus size={12} /> + Ingreso
+            <Plus size={12} strokeWidth={2.5} className="text-sage shrink-0" />
+            <span className="tracking-wide">Ingreso</span>
           </button>
+
+          <div className="w-[1px] h-3 bg-outline-variant/30 mx-0.5"></div>
+
           <button
             onClick={() => setActiveSubTab('nuevo-egreso')}
-            className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-terracotta text-white hover:bg-terracotta/95 flex items-center gap-1 transition-all shadow-xs ${
-              activeSubTab === 'nuevo-egreso' ? 'ring-2 ring-terracotta/40 scale-105' : ''
+            title="Registrar Egreso (−)"
+            aria-label="Registrar Egreso"
+            className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer active:scale-95 motion-reduce:transform-none ${
+              activeSubTab === 'nuevo-egreso'
+                ? 'bg-white text-primary shadow-xs ring-1 ring-outline-variant/30'
+                : 'text-on-surface-variant/75 hover:text-primary hover:bg-white/50'
             }`}
           >
-            <Plus size={12} /> - Gasto
+            <Minus size={12} strokeWidth={2.5} className="text-terracotta shrink-0" />
+            <span className="tracking-wide">Egreso</span>
           </button>
         </div>
       </div>
 
       {/* OVERVIEW TAB */}
       {activeSubTab === 'overview' && (
-        <div className="space-y-8">
+        <div className="space-y-4 sm:space-y-6 lg:space-y-8">
           
-          {/* Main 4 Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Main 4 Cards Grid - 2 cols on mobile for compact viewing, 4 cols on desktop */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-6">
             
             {/* 1. Total Incomes */}
-            <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-3xl p-6 relative overflow-hidden hard-shadow space-y-2">
-              <div className="absolute top-5 right-5 w-9 h-9 bg-sage/10 text-sage rounded-full flex items-center justify-center">
-                <ArrowUpRight size={18} />
+            <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-2xl sm:rounded-3xl p-3 sm:p-5 lg:p-6 relative overflow-hidden hard-shadow space-y-1 sm:space-y-2 active:scale-[0.99] transition-transform motion-reduce:transform-none">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 truncate">Ingresos Totales</span>
+                <div className="w-6 h-6 sm:w-8 sm:h-8 lg:w-9 lg:h-9 bg-sage/10 text-sage rounded-full flex items-center justify-center shrink-0">
+                  <ArrowUpRight size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+                </div>
               </div>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Ingresos Totales</span>
-              <h3 className="font-serif text-3xl font-black text-on-surface">{formatMoney(stats.income)}</h3>
-              <div className="pt-2 wavy-divider opacity-10"></div>
-              <p className="text-[10px] text-on-surface-variant/60 font-semibold pt-1">
+              <h3 className="font-serif text-lg sm:text-2xl lg:text-3xl font-black text-on-surface tracking-tight truncate">{formatMoney(stats.income)}</h3>
+              <div className="pt-1 wavy-divider opacity-10 hidden sm:block"></div>
+              <p className="text-[10px] text-on-surface-variant/70 font-semibold truncate pt-0.5">
                 {stats.completedServices} servicios cobrados
               </p>
             </div>
 
             {/* 2. Total Expenses */}
-            <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-3xl p-6 relative overflow-hidden hard-shadow space-y-2">
-              <div className="absolute top-5 right-5 w-9 h-9 bg-terracotta/10 text-terracotta rounded-full flex items-center justify-center">
-                <ArrowDownRight size={18} />
+            <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-2xl sm:rounded-3xl p-3 sm:p-5 lg:p-6 relative overflow-hidden hard-shadow space-y-1 sm:space-y-2 active:scale-[0.99] transition-transform motion-reduce:transform-none">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 truncate">Egresos Totales</span>
+                <div className="w-6 h-6 sm:w-8 sm:h-8 lg:w-9 lg:h-9 bg-terracotta/10 text-terracotta rounded-full flex items-center justify-center shrink-0">
+                  <ArrowDownRight size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+                </div>
               </div>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Egresos Totales</span>
-              <h3 className="font-serif text-3xl font-black text-on-surface">{formatMoney(stats.expense)}</h3>
-              <div className="pt-2 wavy-divider opacity-10"></div>
-              <p className="text-[10px] text-on-surface-variant/60 font-semibold pt-1">
+              <h3 className="font-serif text-lg sm:text-2xl lg:text-3xl font-black text-on-surface tracking-tight truncate">{formatMoney(stats.expense)}</h3>
+              <div className="pt-1 wavy-divider opacity-10 hidden sm:block"></div>
+              <p className="text-[10px] text-on-surface-variant/70 font-semibold truncate pt-0.5">
                 Insumos, publicidad y fijos
               </p>
             </div>
 
             {/* 3. Net Profit (Ganancia Neta) */}
-            <div className="bg-surface-container border border-outline-variant/70 rounded-3xl p-6 relative overflow-hidden hard-shadow space-y-2">
-              <div className="absolute top-5 right-5 w-9 h-9 bg-primary/10 text-primary rounded-full flex items-center justify-center">
-                <DollarSign size={18} />
+            <div className="bg-surface-container/70 border border-primary/25 rounded-2xl sm:rounded-3xl p-3 sm:p-5 lg:p-6 relative overflow-hidden hard-shadow space-y-1 sm:space-y-2 active:scale-[0.99] transition-transform motion-reduce:transform-none">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-primary/80 truncate">Ganancia Neta</span>
+                <div className="w-6 h-6 sm:w-8 sm:h-8 lg:w-9 lg:h-9 bg-primary/10 text-primary rounded-full flex items-center justify-center shrink-0">
+                  <DollarSign size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+                </div>
               </div>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-primary/80">Ganancia Neta (Analista)</span>
-              <h3 className="font-serif text-3xl font-black text-primary">{formatMoney(stats.netProfit)}</h3>
-              <div className="pt-2 wavy-divider opacity-20"></div>
-              <p className="text-[10px] font-black text-primary/80 pt-1 flex items-center gap-1">
-                <Percent size={11} /> {stats.netMargin}% de margen real de retorno
+              <h3 className="font-serif text-lg sm:text-2xl lg:text-3xl font-black text-primary tracking-tight truncate">{formatMoney(stats.netProfit)}</h3>
+              <div className="pt-1 wavy-divider opacity-20 hidden sm:block"></div>
+              <p className="text-[10px] font-black text-primary/80 truncate pt-0.5 flex items-center gap-0.5">
+                <Percent size={10} /> {stats.netMargin}% de margen real
               </p>
             </div>
 
             {/* 4. Ticket Average & Active Clients */}
-            <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-3xl p-6 relative overflow-hidden hard-shadow space-y-2">
-              <div className="absolute top-5 right-5 w-9 h-9 bg-primary/10 text-primary/70 rounded-full flex items-center justify-center">
-                <Wallet size={18} />
+            <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-2xl sm:rounded-3xl p-3 sm:p-5 lg:p-6 relative overflow-hidden hard-shadow space-y-1 sm:space-y-2 active:scale-[0.99] transition-transform motion-reduce:transform-none">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 truncate">Ticket Promedio</span>
+                <div className="w-6 h-6 sm:w-8 sm:h-8 lg:w-9 lg:h-9 bg-primary/10 text-primary/70 rounded-full flex items-center justify-center shrink-0">
+                  <Wallet size={14} className="sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+                </div>
               </div>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">Ticket Promedio</span>
-              <h3 className="font-serif text-3xl font-black text-on-surface">{formatMoney(stats.ticketAverage)}</h3>
-              <div className="pt-2 wavy-divider opacity-10"></div>
-              <p className="text-[10px] text-on-surface-variant/60 font-semibold pt-1">
-                {stats.activeClientsCount} clientas únicas recurrentes
+              <h3 className="font-serif text-lg sm:text-2xl lg:text-3xl font-black text-on-surface tracking-tight truncate">{formatMoney(stats.ticketAverage)}</h3>
+              <div className="pt-1 wavy-divider opacity-10 hidden sm:block"></div>
+              <p className="text-[10px] text-on-surface-variant/70 font-semibold truncate pt-0.5">
+                {stats.activeClientsCount} clientas únicas
               </p>
             </div>
 
@@ -432,22 +403,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* FINANCIAL HEALTH ALERT CORNER */}
           {healthAlerts.length > 0 && (
-            <div className="bg-surface-container p-6 rounded-3xl border border-outline-variant/35 hard-shadow space-y-3.5">
-              <h4 className="font-serif text-sm font-black text-primary flex items-center gap-1.5 uppercase tracking-wider">
-                <AlertCircle size={16} className="text-terracotta" /> Alertas de Salud Financiera & Márgenes
+            <div className="bg-surface-container p-3 sm:p-5 lg:p-6 rounded-2xl sm:rounded-3xl border border-outline-variant/35 hard-shadow space-y-2 sm:space-y-3.5">
+              <h4 className="font-serif text-xs sm:text-sm font-black text-primary flex items-center gap-1.5 uppercase tracking-wider">
+                <AlertCircle size={15} className="text-terracotta shrink-0" /> Alertas de Salud Financiera & Márgenes
               </h4>
               <div className="wavy-divider opacity-25"></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4">
                 {healthAlerts.map((alert, idx) => (
-                  <div key={idx} className="flex gap-3 bg-white/75 border border-outline-variant/15 p-4 rounded-2xl items-start">
-                    <span className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 ${
+                  <div key={idx} className="flex gap-2.5 bg-white/80 border border-outline-variant/15 p-2.5 sm:p-3.5 rounded-xl items-start transition-all">
+                    <span className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5 ${
                       alert.type === 'danger' ? 'bg-terracotta/10 text-terracotta' : 'bg-gold/10 text-gold-dark'
                     }`}>
-                      <AlertCircle size={14} />
+                      <AlertCircle size={13} />
                     </span>
-                    <div className="space-y-0.5 text-xs">
-                      <h5 className="font-bold text-on-surface">{alert.title}</h5>
-                      <p className="text-[11px] text-on-surface-variant/80 font-medium leading-relaxed">{alert.desc}</p>
+                    <div className="space-y-0.5 text-xs min-w-0">
+                      <h5 className="font-bold text-on-surface truncate">{alert.title}</h5>
+                      <p className="text-[10px] sm:text-[11px] text-on-surface-variant/80 font-medium leading-relaxed">{alert.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -456,42 +427,42 @@ export const Dashboard: React.FC<DashboardProps> = ({
           )}
 
           {/* ADVANCED CHARTS PANEL */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-6 lg:gap-8 items-start">
             
             {/* Top Profitable Services (Valentina's Favorite Table) - 7 Cols */}
-            <div className="lg:col-span-7 bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+            <div className="lg:col-span-7 bg-surface-container-lowest border border-outline-variant/35 p-3.5 sm:p-5 lg:p-6 rounded-2xl sm:rounded-3xl hard-shadow space-y-3 sm:space-y-4">
               <div>
-                <h4 className="font-serif text-base font-black text-primary">Análisis de Rentabilidad por Servicio</h4>
-                <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/65 font-bold mt-0.5">Servicios ordenados por su margen neto (%) real</p>
+                <h4 className="font-serif text-sm sm:text-base font-black text-primary">Análisis de Rentabilidad por Servicio</h4>
+                <p className="text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest text-on-surface-variant/65 font-bold mt-0.5">Servicios ordenados por su margen neto (%) real</p>
               </div>
 
               <div className="wavy-divider opacity-30"></div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto -mx-1 sm:mx-0">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="text-[9px] uppercase tracking-wider font-bold text-on-surface-variant/70 border-b border-outline-variant/20">
-                      <th className="py-2.5">Servicio</th>
-                      <th className="py-2.5 text-center">Cant.</th>
-                      <th className="py-2.5 text-right">Facturado</th>
-                      <th className="py-2.5 text-right">Margen %</th>
+                      <th className="py-2 px-1.5 sm:px-2">Servicio</th>
+                      <th className="py-2 px-1 text-center">Cant.</th>
+                      <th className="py-2 px-1.5 sm:px-2 text-right">Facturado</th>
+                      <th className="py-2 px-1.5 sm:px-2 text-right">Margen %</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/10 text-xs">
                     {topServicesData.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="py-8 text-center text-on-surface-variant/50 font-medium italic">
+                        <td colSpan={4} className="py-6 sm:py-8 text-center text-on-surface-variant/50 font-medium italic text-xs">
                           No hay servicios cobrados registrados en la caja.
                         </td>
                       </tr>
                     ) : (
                       topServicesData.map((srv, idx) => (
-                        <tr key={idx} className="hover:bg-surface-container/10 transition-all font-semibold">
-                          <td className="py-3 text-on-surface font-bold">{srv.name}</td>
-                          <td className="py-3 text-center text-on-surface-variant">{srv.count}</td>
-                          <td className="py-3 text-right text-primary">{formatMoney(srv.revenue)}</td>
-                          <td className="py-3 text-right">
-                            <span className={`inline-block px-2.5 py-0.5 rounded-full font-mono text-[10px] font-black ${
+                        <tr key={idx} className="hover:bg-surface-container/10 active:bg-surface-container/20 transition-colors font-semibold">
+                          <td className="py-2 sm:py-3 px-1.5 sm:px-2 text-on-surface font-bold text-xs truncate max-w-[130px] sm:max-w-none">{srv.name}</td>
+                          <td className="py-2 sm:py-3 px-1 text-center text-on-surface-variant text-xs">{srv.count}</td>
+                          <td className="py-2 sm:py-3 px-1.5 sm:px-2 text-right text-primary font-mono text-xs font-bold">{formatMoney(srv.revenue)}</td>
+                          <td className="py-2 sm:py-3 px-1.5 sm:px-2 text-right">
+                            <span className={`inline-block px-2 py-0.5 rounded-full font-mono text-[10px] font-black ${
                               srv.marginPercent >= 70 ? 'bg-sage/15 text-sage' :
                               srv.marginPercent >= 50 ? 'bg-primary/10 text-primary' :
                               'bg-terracotta/15 text-terracotta'
@@ -508,16 +479,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Operating Expense Breakdown chart - 5 Cols */}
-            <div className="lg:col-span-5 bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+            <div className="lg:col-span-5 bg-surface-container-lowest border border-outline-variant/35 p-3.5 sm:p-5 lg:p-6 rounded-2xl sm:rounded-3xl hard-shadow space-y-3 sm:space-y-4">
               <div>
-                <h4 className="font-serif text-base font-black text-primary">Análisis de Distribución de Egresos</h4>
-                <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/65 font-bold mt-0.5">Concentración porcentual de gastos</p>
+                <h4 className="font-serif text-sm sm:text-base font-black text-primary">Análisis de Distribución de Egresos</h4>
+                <p className="text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest text-on-surface-variant/65 font-bold mt-0.5">Concentración porcentual de gastos</p>
               </div>
 
               <div className="wavy-divider opacity-30"></div>
 
               {/* Graphical Bar distribution */}
-              <div className="space-y-3 pt-1">
+              <div className="space-y-2.5 pt-0.5">
                 {expenseCategories.map((cat, idx) => {
                   const val = movements
                     .filter(m => m.type === 'expense' && m.category === cat)
@@ -531,18 +502,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   return (
                     <div key={idx} className="space-y-1">
                       <div className="flex justify-between items-baseline text-xs font-semibold text-on-surface-variant">
-                        <span>{cat}</span>
-                        <span className="font-mono text-on-surface font-bold">{formatMoney(val)} <span className="text-[9px] text-on-surface-variant/50 font-normal">({percent}%)</span></span>
+                        <span className="truncate pr-2">{cat}</span>
+                        <span className="font-mono text-on-surface font-bold shrink-0">{formatMoney(val)} <span className="text-[9px] text-on-surface-variant/50 font-normal">({percent}%)</span></span>
                       </div>
-                      <div className="w-full bg-surface-container h-2 rounded-full overflow-hidden">
-                        <div className="bg-primary h-full transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                      <div className="w-full bg-surface-container h-1.5 sm:h-2 rounded-full overflow-hidden">
+                        <div className="bg-primary h-full transition-all duration-500 rounded-full" style={{ width: `${percent}%` }}></div>
                       </div>
                     </div>
                   );
                 })}
 
                 {stats.expense === 0 && (
-                  <div className="py-12 border border-dashed border-outline-variant/30 text-center rounded-2xl text-xs text-on-surface-variant/50 font-semibold italic">
+                  <div className="py-8 sm:py-12 border border-dashed border-outline-variant/30 text-center rounded-2xl text-xs text-on-surface-variant/50 font-semibold italic">
                     No se registran egresos u operaciones de gasto en el periodo.
                   </div>
                 )}
@@ -556,31 +527,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* BOX MOVEMENTS LEDGER TABLE */}
       {activeSubTab === 'movimientos' && (
-        <div className="space-y-6">
+        <div className="space-y-3.5 sm:space-y-6">
           
           {/* Filters card */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch sm:items-center bg-surface-container border border-outline-variant/30 p-4 rounded-2xl hard-shadow">
+          <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-4 justify-between items-stretch sm:items-center bg-surface-container border border-outline-variant/30 p-2.5 sm:p-4 rounded-2xl hard-shadow">
             
             {/* Search */}
             <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50" size={16} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50" size={14} />
               <input
                 type="text"
-                placeholder="Buscar por descripción, categoría, clienta..."
+                placeholder="Buscar descripción, categoría, clienta..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-surface-container-lowest text-xs py-2.5 pl-10 pr-4 rounded-full border border-outline-variant/40 focus:outline-none focus:border-primary font-semibold"
+                className="w-full bg-surface-container-lowest text-xs py-2 sm:py-2.5 pl-8 sm:pl-10 pr-3 sm:pr-4 rounded-full border border-outline-variant/40 focus:outline-none focus:border-primary font-semibold"
               />
             </div>
 
-            {/* Type Filter dropdown */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-outline-variant/30 bg-surface-container-lowest text-xs font-bold text-on-surface-variant">
-                <Filter size={12} />
+            {/* Type & Category Filter dropdowns */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex-1 sm:flex-initial flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-outline-variant/30 bg-surface-container-lowest text-[11px] sm:text-xs font-bold text-on-surface-variant">
+                <Filter size={11} className="shrink-0" />
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value as any)}
-                  className="bg-transparent focus:outline-none cursor-pointer"
+                  className="bg-transparent focus:outline-none cursor-pointer w-full"
                 >
                   <option value="all">Flujo Completo</option>
                   <option value="income">Ingresos (+)</option>
@@ -589,13 +560,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Category Filter dropdown */}
-              <div className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-outline-variant/30 bg-surface-container-lowest text-xs font-bold text-on-surface-variant">
+              <div className="flex-1 sm:flex-initial flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-outline-variant/30 bg-surface-container-lowest text-[11px] sm:text-xs font-bold text-on-surface-variant">
                 <select
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
-                  className="bg-transparent focus:outline-none cursor-pointer"
+                  className="bg-transparent focus:outline-none cursor-pointer w-full truncate"
                 >
-                  <option value="all">Todas las Categorías</option>
+                  <option value="all">Categorías (Todas)</option>
                   {filterCategoriesList.map((cat, idx) => (
                     <option key={idx} value={cat}>{cat}</option>
                   ))}
@@ -605,8 +576,83 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           </div>
 
-          {/* Table ledger */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-3xl overflow-hidden hard-shadow">
+          {/* MOBILE VIEW (High-density stream tailored for iPhone 14 Plus) */}
+          <div className="md:hidden space-y-2">
+            {filteredMovements.length === 0 ? (
+              <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl py-10 text-center text-on-surface-variant/50 font-semibold italic text-xs">
+                No se registran movimientos con los filtros seleccionados.
+              </div>
+            ) : (
+              filteredMovements.slice(0, visibleMovementsLimit).map((m) => {
+                const isInc = m.type === 'income';
+                const cost = m.costOfSupplies || 0;
+                const staff = m.staffCommission || 0;
+                const profit = isInc ? (m.amount - cost - staff) : 0;
+                const profitPercent = isInc && m.amount > 0 ? Math.round((profit / m.amount) * 100) : 0;
+
+                return (
+                  <div
+                    key={m.id}
+                    className="bg-surface-container-lowest border border-outline-variant/25 rounded-2xl p-3 space-y-1.5 hard-shadow active:scale-[0.99] transition-transform motion-reduce:transform-none"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            isInc ? 'bg-sage/10 text-sage' : 'bg-terracotta/10 text-terracotta'
+                          }`}>
+                            {isInc ? 'Ingreso' : 'Egreso'}
+                          </span>
+                          <span className="text-[10px] font-bold text-on-surface-variant/80 bg-surface-container px-1.5 py-0.5 rounded truncate max-w-[130px]">
+                            {m.category}
+                          </span>
+                          {m.paymentMethod && (
+                            <span className="text-[9px] font-bold bg-surface-container-low px-1.5 py-0.5 rounded text-on-surface-variant/70">
+                              {m.paymentMethod}
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-bold text-xs text-on-surface mt-1 truncate">{m.description}</p>
+                        {m.clientName && (
+                          <p className="text-[10px] text-primary font-bold mt-0.5 truncate">Clienta: {m.clientName}</p>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className={`font-mono font-black text-sm block ${isInc ? 'text-sage' : 'text-terracotta'}`}>
+                          {isInc ? '+' : '-'}{formatMoney(m.amount)}
+                        </span>
+                        <span className="text-[9px] text-on-surface-variant/50 font-medium block">{m.date}</span>
+                      </div>
+                    </div>
+
+                    {/* Margin & Action bottom row */}
+                    <div className="flex items-center justify-between pt-1 border-t border-outline-variant/10 text-[10px]">
+                      {isInc ? (
+                        <div className="text-primary font-bold truncate">
+                          Margen: <span className="font-mono">{formatMoney(profit)}</span> <span className="text-on-surface-variant/60 font-normal">({profitPercent}%)</span>
+                        </div>
+                      ) : (
+                        <span className="text-on-surface-variant/50 font-medium italic text-[10px]">Gasto operativo registrado</span>
+                      )}
+
+                      <button
+                        onClick={() => setMovementToDelete(m)}
+                        className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer active:scale-90"
+                        title="Eliminar movimiento"
+                        aria-label="Eliminar movimiento"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* DESKTOP VIEW (Full 8-Column Ledger Table) */}
+          <div className="hidden md:block bg-surface-container-lowest border border-outline-variant/35 rounded-3xl overflow-hidden hard-shadow">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -678,12 +724,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </td>
                           <td className="px-6 py-4 text-center">
                             <button
-                              onClick={() => {
-                                if (confirm('¿Estás segura de que deseas eliminar este movimiento contable? Esta acción modificará tus reportes financieros de forma inmediata.')) {
-                                  onDeleteMovement(m.id);
-                                }
-                              }}
-                              className="text-on-surface-variant/40 hover:text-terracotta p-1.5 hover:bg-terracotta/10 rounded-full transition-all"
+                              onClick={() => setMovementToDelete(m)}
+                              className="text-on-surface-variant/40 hover:text-terracotta p-1.5 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer active:scale-90"
                             >
                               <Trash2 size={13} />
                             </button>
@@ -695,33 +737,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </tbody>
               </table>
             </div>
-
-            {/* Pagination Load More for Movements */}
-            {filteredMovements.length > visibleMovementsLimit && (
-              <div className="flex justify-center py-4 bg-surface-container-lowest border-t border-outline-variant/15">
-                <button
-                  onClick={() => setVisibleMovementsLimit((prev) => prev + 30)}
-                  className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-surface-container border border-outline-variant/25 text-xs font-bold text-primary hover:bg-primary/5 transition-all shadow-xs"
-                >
-                  <ChevronDown size={14} />
-                  Cargar más movimientos ({filteredMovements.length - visibleMovementsLimit} restantes)
-                </button>
-              </div>
-            )}
           </div>
+
+          {/* Pagination Load More for Movements (Shared) */}
+          {filteredMovements.length > visibleMovementsLimit && (
+            <div className="flex justify-center py-2 sm:py-4">
+              <button
+                onClick={() => setVisibleMovementsLimit((prev) => prev + 30)}
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full bg-surface-container border border-outline-variant/25 text-[11px] sm:text-xs font-bold text-primary hover:bg-primary/5 active:scale-95 transition-all shadow-xs cursor-pointer"
+              >
+                <ChevronDown size={13} />
+                Cargar más movimientos ({filteredMovements.length - visibleMovementsLimit} restantes)
+              </button>
+            </div>
+          )}
 
         </div>
       )}
 
       {/* FORM: NEW INCOME WITH MARGIN ESTIMATOR PANEL */}
       {activeSubTab === 'nuevo-ingreso' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-8 items-start max-w-5xl mx-auto">
           
           {/* Left Form: Form Details - 7 Cols */}
-          <form onSubmit={handleIncomeSubmit} className="lg:col-span-7 bg-surface-container-lowest border border-outline-variant/40 p-6 rounded-3xl hard-shadow space-y-4">
-            <div className="text-center pb-2">
-              <h3 className="font-serif text-lg font-black text-primary">Registrar Turno Cobrado o Venta</h3>
-              <p className="text-[11px] text-on-surface-variant/70 mt-0.5">Completa los datos de facturación para auditoría neta de caja</p>
+          <form onSubmit={handleIncomeSubmit} className="lg:col-span-7 bg-surface-container-lowest border border-outline-variant/40 p-4 sm:p-6 rounded-2xl sm:rounded-3xl hard-shadow space-y-3.5 sm:space-y-4">
+            <div className="text-center pb-1">
+              <h3 className="font-serif text-base sm:text-lg font-black text-primary">Registrar Turno Cobrado o Venta</h3>
+              <p className="text-[10px] sm:text-[11px] text-on-surface-variant/70 mt-0.5">Completa los datos de facturación para auditoría neta de caja</p>
             </div>
 
             <div className="wavy-divider opacity-30"></div>
@@ -737,7 +779,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 placeholder="Ej. 1200"
                 value={incomeAmount}
                 onChange={(e) => setIncomeAmount(e.target.value)}
-                className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-bold"
+                className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-bold"
                 required
               />
             </div>
@@ -749,19 +791,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 placeholder="Ej. Manicura Rusa con Nail Art - Lucía Méndez"
                 value={incomeDesc}
                 onChange={(e) => setIncomeDesc(e.target.value)}
-                className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
                 required
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Fecha</label>
                 <input
                   type="date"
                   value={incomeDate}
                   onChange={(e) => setIncomeDate(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold"
+                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold"
                   required
                 />
               </div>
@@ -771,7 +813,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <select
                   value={incomeCategory}
                   onChange={(e) => setIncomeCategory(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold truncate"
                 >
                   <option value="Manicura Rusa">Manicura Rusa</option>
                   <option value="Soft Gel Extensión">Soft Gel Extensión</option>
@@ -785,13 +827,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Método de Pago</label>
                 <select
                   value={incomeMethod}
                   onChange={(e) => setIncomeMethod(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold uppercase tracking-wider"
+                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold uppercase tracking-wider truncate"
                 >
                   {paymentMethods.map(m => (
                     <option key={m} value={m}>{m}</option>
@@ -804,7 +846,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <select
                   value={incomeClient}
                   onChange={(e) => setIncomeClient(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold truncate"
                 >
                   <option value="">No asociar clienta</option>
                   {clients.map(c => (
@@ -821,21 +863,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 placeholder="Escribe observaciones adicionales..."
                 value={incomeNotes}
                 onChange={(e) => setIncomeNotes(e.target.value)}
-                className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
               />
             </div>
 
-            <div className="pt-3 flex gap-3">
+            <div className="pt-2 flex gap-2.5 sm:gap-3">
               <button
                 type="button"
                 onClick={() => setActiveSubTab('overview')}
-                className="flex-1 bg-surface-container-high py-3 rounded-xl text-xs text-on-surface font-bold"
+                className="flex-1 bg-surface-container-high py-2.5 sm:py-3 rounded-xl text-xs text-on-surface font-bold active:scale-95 transition-transform cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="flex-1 bg-sage text-white py-3 rounded-xl text-xs font-bold shadow-xs hover:bg-sage/95 transition-all"
+                className="flex-1 bg-sage text-white py-2.5 sm:py-3 rounded-xl text-xs font-bold shadow-xs hover:bg-sage/95 active:scale-95 transition-transform cursor-pointer"
               >
                 Registrar Cobro
               </button>
@@ -843,17 +885,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </form>
 
           {/* Right Panel: Margin Estimator Simulator - 5 Cols */}
-          <div className="lg:col-span-5 bg-surface-container-lowest border border-outline-variant/40 p-6 rounded-3xl hard-shadow space-y-4">
-            <h4 className="font-serif text-sm font-black text-primary flex items-center gap-1.5 uppercase tracking-wider">
-              <Calculator size={16} /> Simulador de Margen Neto
+          <div className="lg:col-span-5 bg-surface-container-lowest border border-outline-variant/40 p-4 sm:p-6 rounded-2xl sm:rounded-3xl hard-shadow space-y-3 sm:space-y-4">
+            <h4 className="font-serif text-xs sm:text-sm font-black text-primary flex items-center gap-1.5 uppercase tracking-wider">
+              <Calculator size={15} /> Simulador de Margen Neto
             </h4>
-            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Define los costos variables estimados de insumos aplicados y comisiones para ver el rendimiento neto de este cobro en tiempo real.
+            <p className="text-[10px] sm:text-[11px] text-on-surface-variant/70 leading-relaxed">
+              Define los costos variables estimados de insumos aplicados y comisiones para ver el rendimiento neto en tiempo real.
             </p>
 
             <div className="wavy-divider opacity-30"></div>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               {/* Cost of Supplies input */}
               <div>
                 <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Costo de Insumos / Desechables ($)</label>
@@ -870,41 +912,41 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div>
                 <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Comisión del Staff (%)</label>
                 <div className="relative">
-                  <Percent className="absolute right-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50" size={12} />
+                  <Percent className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50" size={12} />
                   <input
                     type="number"
                     placeholder="15"
                     value={incomeStaffCommissionPercent}
                     onChange={(e) => setIncomeStaffCommissionPercent(e.target.value)}
-                    className="w-full bg-surface-container-low text-xs py-2 pl-3 pr-10 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-bold"
+                    className="w-full bg-surface-container-low text-xs py-2 pl-3 pr-9 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-bold"
                   />
                 </div>
               </div>
             </div>
 
             {/* Dynamic Simulated Outputs Cards */}
-            <div className="space-y-2.5 pt-2">
-              <div className="bg-surface-container-low/60 p-3.5 rounded-2xl border border-outline-variant/15 flex justify-between items-center text-xs">
-                <span className="font-bold text-on-surface-variant">Comisión Proporcional</span>
-                <span className="font-mono text-on-surface font-black">{formatMoney(estimatorValues.commissionAmount)}</span>
+            <div className="space-y-2 pt-1">
+              <div className="bg-surface-container-low/60 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-outline-variant/15 flex justify-between items-center text-xs">
+                <span className="font-bold text-on-surface-variant text-[11px] sm:text-xs">Comisión Proporcional</span>
+                <span className="font-mono text-on-surface font-black text-xs sm:text-sm">{formatMoney(estimatorValues.commissionAmount)}</span>
               </div>
 
-              <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10 flex justify-between items-center text-xs">
+              <div className="bg-primary/5 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-primary/10 flex justify-between items-center text-xs">
                 <div>
-                  <p className="font-bold text-primary">Margen de Retorno Estimado</p>
-                  <p className="text-[9px] text-on-surface-variant/60 font-semibold mt-0.5">Monto de ganancia pura después de deducir costos</p>
+                  <p className="font-bold text-primary text-[11px] sm:text-xs">Margen de Retorno Estimado</p>
+                  <p className="text-[9px] text-on-surface-variant/60 font-semibold mt-0.5">Ganancia pura tras deducir costos</p>
                 </div>
                 <div className="text-right">
-                  <h4 className="font-serif text-lg font-black text-primary">{formatMoney(estimatorValues.netMargin)}</h4>
+                  <h4 className="font-serif text-base sm:text-lg font-black text-primary">{formatMoney(estimatorValues.netMargin)}</h4>
                   <span className="text-[10px] font-mono text-primary font-black">({estimatorValues.marginPercent}%)</span>
                 </div>
               </div>
             </div>
 
             {/* Dynamic analytical advice */}
-            <div className="bg-gold/5 p-4 rounded-2xl border border-gold/15 text-[11px] text-on-surface-variant/85 leading-relaxed">
-              <p className="font-bold text-gold-dark flex items-center gap-1 mb-1">
-                <Info size={13} /> Consejo Económico de Valentina:
+            <div className="bg-gold/5 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gold/15 text-[10px] sm:text-[11px] text-on-surface-variant/85 leading-relaxed">
+              <p className="font-bold text-gold-dark flex items-center gap-1 mb-0.5">
+                <Info size={12} /> Consejo Económico de Valentina:
               </p>
               "Mantener un margen superior al <strong>40%</strong> asegura la reinversión y el crecimiento sostenible de tu salón."
             </div>
@@ -915,10 +957,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* FORM: NEW EXPENSE */}
       {activeSubTab === 'nuevo-egreso' && (
-        <div className="max-w-xl mx-auto bg-surface-container-lowest border border-outline-variant/40 p-6 md:p-8 rounded-3xl hard-shadow space-y-4">
-          <div className="text-center pb-2">
-            <h3 className="font-serif text-lg font-black text-terracotta">Registrar Gasto Operativo</h3>
-            <p className="text-[11px] text-on-surface-variant/70 mt-0.5">Controla las compras de insumos, publicidad y expensas fijos</p>
+        <div className="max-w-xl mx-auto bg-surface-container-lowest border border-outline-variant/40 p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl hard-shadow space-y-3.5 sm:space-y-4">
+          <div className="text-center pb-1">
+            <h3 className="font-serif text-base sm:text-lg font-black text-terracotta">Registrar Gasto Operativo</h3>
+            <p className="text-[10px] sm:text-[11px] text-on-surface-variant/70 mt-0.5">Controla las compras de insumos, publicidad y expensas fijos</p>
           </div>
 
           <div className="wavy-divider opacity-30"></div>
@@ -927,7 +969,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <p className="bg-terracotta/5 border border-terracotta/20 text-terracotta p-2.5 rounded-lg text-xs font-semibold">{expenseError}</p>
           )}
 
-          <form onSubmit={handleExpenseSubmit} className="space-y-4">
+          <form onSubmit={handleExpenseSubmit} className="space-y-3 sm:space-y-4">
             <div>
               <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Monto del Egreso ($)</label>
               <input
@@ -935,7 +977,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 placeholder="0.00"
                 value={expenseAmount}
                 onChange={(e) => setExpenseAmount(e.target.value)}
-                className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-bold"
+                className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-bold"
                 required
               />
             </div>
@@ -947,19 +989,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 placeholder="Ej. Colección de esmaltes OPI otoño"
                 value={expenseDesc}
                 onChange={(e) => setExpenseDesc(e.target.value)}
-                className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
                 required
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Fecha</label>
                 <input
                   type="date"
                   value={expenseDate}
                   onChange={(e) => setExpenseDate(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold"
+                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold"
                   required
                 />
               </div>
@@ -969,7 +1011,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <select
                   value={expenseCategoryInput}
                   onChange={(e) => setExpenseCategoryInput(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold truncate"
                 >
                   {expenseCategories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
@@ -978,17 +1020,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            <div className="pt-3 flex gap-3">
+            <div className="pt-2 flex gap-2.5 sm:gap-3">
               <button
                 type="button"
                 onClick={() => setActiveSubTab('overview')}
-                className="flex-1 bg-surface-container-high py-3 rounded-xl text-xs text-on-surface font-bold"
+                className="flex-1 bg-surface-container-high py-2.5 sm:py-3 rounded-xl text-xs text-on-surface font-bold active:scale-95 transition-transform cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="flex-1 bg-terracotta text-white py-3 rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 transition-all"
+                className="flex-1 bg-terracotta text-white py-2.5 sm:py-3 rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 active:scale-95 transition-transform cursor-pointer"
               >
                 Registrar Egreso
               </button>
@@ -996,6 +1038,56 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </form>
         </div>
       )}
+
+      {/* CONFIRMATION MODAL: ELIMINAR MOVIMIENTO */}
+      <Modal
+        isOpen={!!movementToDelete}
+        onClose={() => setMovementToDelete(null)}
+        icon={<AlertCircle size={18} className="text-terracotta" />}
+        title="¿Eliminar movimiento contable?"
+        subtitle={movementToDelete ? `${movementToDelete.type === 'income' ? 'Ingreso' : 'Egreso'}: ${formatMoney(movementToDelete.amount)}` : undefined}
+        maxWidth="sm"
+      >
+        {movementToDelete && (
+          <div className="space-y-4">
+            <div className="bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/20 text-xs space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-on-surface text-sm truncate pr-2">{movementToDelete.description}</span>
+                <span className={`font-mono font-black ${movementToDelete.type === 'income' ? 'text-sage' : 'text-terracotta'}`}>
+                  {movementToDelete.type === 'income' ? '+' : '-'}{formatMoney(movementToDelete.amount)}
+                </span>
+              </div>
+              <p className="text-[11px] text-on-surface-variant/70">
+                Categoría: {movementToDelete.category} • Fecha: {movementToDelete.date}
+              </p>
+            </div>
+
+            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
+              Esta acción modificará tus reportes financieros de forma inmediata.
+            </p>
+
+            <div className="flex gap-2.5 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setMovementToDelete(null)}
+                className="flex-1 py-2.5 px-4 bg-surface-container-high rounded-xl text-xs font-bold text-on-surface hover:bg-surface-container-high/80 active:scale-95 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteMovement(movementToDelete.id);
+                  setMovementToDelete(null);
+                }}
+                className="flex-1 py-2.5 px-4 bg-terracotta text-white rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 active:scale-95 transition-all cursor-pointer"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
     </div>
   );

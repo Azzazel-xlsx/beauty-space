@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Client, Appointment, Service, SpecialPrice, ClientPhoto } from '../types';
-import { Plus, Search, Calendar, Phone, Mail, FileText, Sparkles, Tag, ArrowLeft, Heart, PenTool, Check, AlertTriangle, Trash2, Award, MessageSquare, User, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Client, Appointment, Service, SpecialPrice } from '../types';
+import { Plus, Search, Calendar, Phone, Mail, FileText, Sparkles, Tag, ArrowLeft, Heart, PenTool, Check, AlertTriangle, Trash2, Award, MessageSquare, User, ChevronDown, Camera, Upload, RotateCcw } from 'lucide-react';
 import { generateId } from '../utils/id';
 import { useDebounce } from '../hooks/useDebounce';
 import { formatMoney } from '../utils/formatters';
+import { compressImage } from '../utils/imageCompressor';
 
 interface ClientasProps {
   clients: Client[];
@@ -12,7 +13,7 @@ interface ClientasProps {
   specialPrices: SpecialPrice[];
   onAddClient: (client: Omit<Client, 'id' | 'createdAt'>) => void;
   onUpdateClientNotes: (clientId: string, notes: string) => void;
-  onUpdateClientPhotos?: (clientId: string, photos: ClientPhoto[]) => void;
+  onDeleteClient?: (id: string) => void;
   onAddSpecialPrice?: (newSp: Omit<SpecialPrice, 'id'>) => void;
   onDeleteSpecialPrice?: (id: string) => void;
 }
@@ -41,10 +42,12 @@ export const Clientas: React.FC<ClientasProps> = ({
   specialPrices,
   onAddClient,
   onUpdateClientNotes,
+  onDeleteClient,
   onAddSpecialPrice,
   onDeleteSpecialPrice
 }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeSegment, setActiveSegment] = useState<'all' | 'new' | 'frequent' | 'inactive'>('all');
@@ -55,7 +58,55 @@ export const Clientas: React.FC<ClientasProps> = ({
   const [newEmail, setNewEmail] = useState('');
   const [newNotes, setNewNotes] = useState('');
   const [avatarIndex, setAvatarIndex] = useState(0);
+  const [customPhoto, setCustomPhoto] = useState<string | null>(null);
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const [isDragOverPhoto, setIsDragOverPhoto] = useState(false);
   const [formError, setFormError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // File upload processing with downscaling and compression
+  const handleFileProcess = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setFormError('Por favor selecciona un archivo de imagen válido (JPG, PNG, WebP).');
+      return;
+    }
+    try {
+      setIsCompressingPhoto(true);
+      setFormError('');
+      // Downscale to 360x360 for high quality yet compact storage (~20KB)
+      const compressed = await compressImage(file, {
+        maxWidth: 360,
+        maxHeight: 360,
+        quality: 0.85,
+        mimeType: 'image/jpeg'
+      });
+      setCustomPhoto(compressed);
+    } catch (err) {
+      console.error('Error procesando imagen de clienta:', err);
+      setFormError('No se pudo procesar la imagen seleccionada. Intenta con otra foto.');
+    } finally {
+      setIsCompressingPhoto(false);
+    }
+  };
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileProcess(file);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDropPhoto = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverPhoto(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileProcess(file);
+    }
+  };
 
   // Notes state inside selected client view
   const [tempNotes, setTempNotes] = useState('');
@@ -188,8 +239,7 @@ export const Clientas: React.FC<ClientasProps> = ({
       phone: newPhone,
       email: newEmail || 'Sin email',
       notes: newNotes || 'Sin anotaciones particulares.',
-      photoUrl: PHOTO_PRESETS[avatarIndex],
-      photos: [] // Initial empty evolution gallery
+      photoUrl: customPhoto || PHOTO_PRESETS[avatarIndex]
     });
 
     // Reset Form
@@ -198,6 +248,7 @@ export const Clientas: React.FC<ClientasProps> = ({
     setNewEmail('');
     setNewNotes('');
     setAvatarIndex(0);
+    setCustomPhoto(null);
     setFormError('');
     setShowAddForm(false);
   };
@@ -255,9 +306,21 @@ export const Clientas: React.FC<ClientasProps> = ({
             >
               <ArrowLeft size={14} /> Volver al Listado de Clientas
             </button>
-            <span className="text-[11px] font-bold text-on-surface-variant/60 uppercase tracking-wider">
-              Ficha de Clienta
-            </span>
+            <div className="flex items-center gap-3">
+              {onDeleteClient && (
+                <button
+                  type="button"
+                  onClick={() => setClientToDelete(selectedClient)}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-terracotta hover:bg-terracotta/10 px-3.5 py-1.5 rounded-full border border-terracotta/30 transition-all cursor-pointer"
+                  title={`Eliminar ficha de ${selectedClient.name}`}
+                >
+                  <Trash2 size={13} /> Eliminar Ficha
+                </button>
+              )}
+              <span className="text-[11px] font-bold text-on-surface-variant/60 uppercase tracking-wider">
+                Ficha de Clienta
+              </span>
+            </div>
           </div>
 
           {/* Tarjeta de Identificación Básica de la Clienta */}
@@ -640,9 +703,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm(`¿Eliminar la tarifa especial para "${service.name}"?`)) {
-                                onDeleteSpecialPrice(sp.id);
-                              }
+                              onDeleteSpecialPrice(sp.id);
                             }}
                             className="p-2 text-on-surface-variant/40 hover:text-terracotta hover:bg-terracotta/10 rounded-full transition-colors cursor-pointer"
                             title="Eliminar tarifa especial"
@@ -747,22 +808,166 @@ export const Clientas: React.FC<ClientasProps> = ({
 
               <form onSubmit={handleAddSubmit} className="space-y-4">
                 
-                {/* Visual Avatar Selection Carousel */}
-                <div>
-                  <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-2">Elegir Retrato de Dossier</label>
-                  <div className="flex gap-2.5 overflow-x-auto pb-2 pt-1 scrollbar-none px-1">
-                    {PHOTO_PRESETS.map((photo, index) => (
-                      <button
-                        key={index}
-                        type="button"
-                        onClick={() => setAvatarIndex(index)}
-                        className={`w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 transition-all p-0.5 ${
-                          avatarIndex === index ? 'border-primary ring-2 ring-primary/20 scale-105' : 'border-transparent opacity-65 hover:opacity-100'
+                {/* Photo Upload & Avatar Selection */}
+                <div className="bg-surface-container-low/70 border border-outline-variant/30 rounded-2xl p-4 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant flex items-center gap-1.5">
+                      <Camera size={13} className="text-primary" /> Retrato de la Clienta
+                    </label>
+                    {customPhoto ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                        <Sparkles size={11} /> Foto real seleccionada
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-on-surface-variant/60">
+                        Retrato ilustrado (placeholder)
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Hidden native file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                    id="client-real-photo-upload"
+                  />
+
+                  {/* Preview and Upload Controls */}
+                  <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                    {/* Circular Portrait with overlay */}
+                    <div className="relative group shrink-0">
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDragOverPhoto(true);
+                        }}
+                        onDragLeave={() => setIsDragOverPhoto(false)}
+                        onDrop={handleDropPhoto}
+                        className={`w-24 h-24 sm:w-26 sm:h-26 rounded-full p-1 bg-white border-2 cursor-pointer transition-all shadow-sm overflow-hidden flex items-center justify-center relative ${
+                          isDragOverPhoto
+                            ? 'border-primary ring-4 ring-primary/20 scale-105'
+                            : customPhoto
+                            ? 'border-primary'
+                            : 'border-outline-variant/50 hover:border-primary'
                         }`}
+                        title="Haz clic o arrastra una imagen para subirla"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            fileInputRef.current?.click();
+                          }
+                        }}
                       >
-                        <img src={photo} alt={`preset-${index}`} className="w-full h-full object-cover rounded-full" />
+                        <img
+                          src={customPhoto || PHOTO_PRESETS[avatarIndex]}
+                          alt="Vista previa de clienta"
+                          className="w-full h-full object-cover rounded-full transition-transform duration-300 group-hover:scale-105"
+                        />
+
+                        {/* Interactive overlay on hover/tap */}
+                        <div className="absolute inset-0 rounded-full bg-black/45 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity duration-200">
+                          <Camera size={20} />
+                          <span className="text-[9px] font-bold mt-0.5">{customPhoto ? 'Cambiar' : 'Subir'}</span>
+                        </div>
+
+                        {/* Processing Spinner Overlay */}
+                        {isCompressingPhoto && (
+                          <div className="absolute inset-0 rounded-full bg-black/70 flex flex-col items-center justify-center text-white text-[10px] font-bold">
+                            <span className="animate-spin text-base mb-0.5">◌</span>
+                            Procesando...
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Floating camera action button */}
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md border-2 border-white hover:scale-110 transition-transform cursor-pointer"
+                        title="Subir foto desde tu dispositivo"
+                        aria-label="Subir foto desde dispositivo"
+                      >
+                        <Camera size={13} />
                       </button>
-                    ))}
+                    </div>
+
+                    {/* Explanatory text & actions */}
+                    <div className="flex-1 text-center sm:text-left space-y-2">
+                      <div>
+                        <p className="text-xs font-bold text-on-surface">
+                          {customPhoto ? 'Foto real de la clienta lista' : 'Foto real o retrato ilustrado'}
+                        </p>
+                        <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
+                          {customPhoto
+                            ? 'La imagen se ha adaptado al formato circular y se mostrará en su ficha y citas.'
+                            : 'Puedes subir una foto real desde tu dispositivo o seleccionar un retrato ilustrado de referencia como placeholder.'}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isCompressingPhoto}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-all shadow-xs cursor-pointer disabled:opacity-60"
+                        >
+                          <Upload size={13} />
+                          {customPhoto ? 'Cambiar foto real' : 'Subir foto real'}
+                        </button>
+
+                        {customPhoto && (
+                          <button
+                            type="button"
+                            onClick={() => setCustomPhoto(null)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest text-on-surface text-xs font-semibold hover:bg-terracotta/10 hover:border-terracotta/40 hover:text-terracotta transition-all cursor-pointer"
+                            title="Volver a utilizar el retrato ilustrado"
+                          >
+                            <RotateCcw size={12} />
+                            Usar placeholder
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Preset Carousel for Placeholder Selection */}
+                  <div className="pt-2 border-t border-outline-variant/20 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant/70">
+                        {customPhoto ? 'O seleccionar un retrato ilustrado de reemplazo:' : 'Elegir retrato ilustrado placeholder:'}
+                      </span>
+                      {customPhoto && (
+                        <span className="text-[10px] text-on-surface-variant/50 italic">
+                          (Sustituirá la foto subida)
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-none px-0.5">
+                      {PHOTO_PRESETS.map((photo, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => {
+                            setAvatarIndex(index);
+                            if (customPhoto) setCustomPhoto(null);
+                          }}
+                          className={`w-11 h-11 rounded-full overflow-hidden shrink-0 border-2 transition-all p-0.5 cursor-pointer ${
+                            !customPhoto && avatarIndex === index
+                              ? 'border-primary ring-2 ring-primary/20 scale-105 opacity-100'
+                              : 'border-transparent opacity-60 hover:opacity-100 hover:scale-105'
+                          }`}
+                          title={`Retrato ilustrado ${index + 1}`}
+                        >
+                          <img src={photo} alt={`preset-${index}`} className="w-full h-full object-cover rounded-full" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -817,14 +1022,18 @@ export const Clientas: React.FC<ClientasProps> = ({
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowAddForm(false)}
-                    className="flex-1 bg-surface-container-high text-on-surface text-xs font-bold py-3 rounded-xl transition-all"
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setCustomPhoto(null);
+                      setFormError('');
+                    }}
+                    className="flex-1 bg-surface-container-high text-on-surface text-xs font-bold py-3 rounded-xl transition-all cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 bg-primary text-white text-xs font-bold py-3 rounded-xl transition-all editorial-shadow"
+                    className="flex-1 bg-primary text-white text-xs font-bold py-3 rounded-xl transition-all editorial-shadow cursor-pointer"
                   >
                     Registrar Ficha
                   </button>
@@ -844,16 +1053,32 @@ export const Clientas: React.FC<ClientasProps> = ({
                 <div
                   key={c.id}
                   onClick={() => setSelectedClientId(c.id)}
-                  className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-5 hard-shadow flex flex-col justify-between items-stretch cursor-pointer hover:border-primary/50 hover:scale-[1.01] transition-all duration-300"
+                  className="group relative bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-5 hard-shadow flex flex-col justify-between items-stretch cursor-pointer hover:border-primary/50 hover:scale-[1.01] transition-all duration-300"
                 >
-                  <div className="flex gap-4 items-center">
+                  {/* Discreet delete button in top right corner */}
+                  {onDeleteClient && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setClientToDelete(c);
+                      }}
+                      className="absolute top-3.5 right-3.5 p-1.5 rounded-full text-on-surface-variant/30 hover:text-terracotta hover:bg-terracotta/10 transition-all opacity-60 group-hover:opacity-100 z-10 cursor-pointer"
+                      title={`Eliminar a ${c.name}`}
+                      aria-label={`Eliminar a ${c.name}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+
+                  <div className="flex gap-4 items-center pr-6">
                     <img
                       src={c.photoUrl}
                       alt={c.name}
-                      className="w-14 h-14 rounded-full object-cover border-2 border-primary/10"
+                      className="w-14 h-14 rounded-full object-cover border-2 border-primary/10 shrink-0"
                     />
-                    <div className="space-y-0.5">
-                      <h4 className="font-serif text-sm font-black text-on-surface tracking-wide">{c.name}</h4>
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <h4 className="font-serif text-sm font-black text-on-surface tracking-wide truncate">{c.name}</h4>
                       <p className="text-[10px] text-on-surface-variant/60 font-bold">{c.phone}</p>
                       
                       {/* Visits badge */}
@@ -893,6 +1118,65 @@ export const Clientas: React.FC<ClientasProps> = ({
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* Floating Delete Confirmation Notification / Modal */}
+      {clientToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setClientToDelete(null)}
+        >
+          <div
+            className="bg-surface-container-lowest border border-outline-variant/30 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+            role="alertdialog"
+            aria-modal="true"
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-terracotta/10 text-terracotta flex items-center justify-center shrink-0">
+                <Trash2 size={20} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-serif text-base font-black text-on-surface">
+                  Eliminar Clienta
+                </h3>
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  ¿Estás seguro de que deseas eliminar a <strong className="font-bold text-on-surface">{clientToDelete.name}</strong>?
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-surface-container/40 p-3 rounded-xl border border-outline-variant/15 text-[11px] text-on-surface-variant/80">
+              Esta acción eliminará la ficha de la clienta y las tarifas personalizadas asociadas.
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setClientToDelete(null)}
+                className="py-2.5 px-4 rounded-xl border border-outline-variant/30 text-xs font-bold text-on-surface hover:bg-surface-container transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteClient && clientToDelete) {
+                    const idToDelete = clientToDelete.id;
+                    onDeleteClient(idToDelete);
+                    if (selectedClientId === idToDelete) {
+                      setSelectedClientId(null);
+                    }
+                    setClientToDelete(null);
+                  }
+                }}
+                className="py-2.5 px-4 rounded-xl bg-terracotta text-white text-xs font-bold hover:bg-terracotta/90 transition-all shadow-xs cursor-pointer"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, ShieldCheck, Sparkles } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Lock, Eye, EyeOff, Sparkles, Loader2 } from 'lucide-react';
 import { hashPin, generateSalt } from '../utils/crypto';
 import { AdminProfile } from '../types';
 
@@ -13,6 +13,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isShaking, setIsShaking] = useState(false);
+  const [lastTypedIndex, setLastTypedIndex] = useState<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handlePinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+    if (val.length > pin.length) {
+      setLastTypedIndex(val.length - 1);
+    } else {
+      setLastTypedIndex(null);
+    }
+    setPin(val);
+    if (error) setError(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,20 +47,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
         localStorage.setItem('bs_auth_hash', storedHash);
       }
 
+      // Small delay so user sees smooth loading state
+      await new Promise(resolve => setTimeout(resolve, 380));
+
       const inputHash = await hashPin(pin.trim(), salt);
 
       if (inputHash === storedHash) {
         onLoginSuccess();
       } else {
         setError('PIN incorrecto. Verifica tus credenciales de acceso.');
+        setIsShaking(true);
         setPin('');
+        setLastTypedIndex(null);
+        setTimeout(() => setIsShaking(false), 450);
+        if (inputRef.current) inputRef.current.focus();
       }
     } catch {
-      setError('Error verificando credenciales en este navegador.');
+      setError('Error verificando credenciales en este terminal.');
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 450);
     } finally {
       setLoading(false);
     }
   };
+
+  // We show 4 standard slots, or more if PIN is longer
+  const slotCount = Math.max(4, pin.length);
 
   return (
     <div className="min-h-screen bg-surface flex flex-col items-center justify-center p-4 selection:bg-primary/20">
@@ -72,7 +98,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
           </p>
         </div>
 
-        {/* Profile Card */}
+        {/* Profile Card without "FOUNDER & STYLIST (ADMIN)" text */}
         <div className="flex items-center gap-3.5 p-3.5 bg-surface-container-low/60 rounded-2xl border border-outline-variant/20">
           <img
             src={adminProfile.photoUrl}
@@ -81,58 +107,120 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
           />
           <div className="flex-1 min-w-0">
             <h3 className="font-serif text-sm font-bold text-on-surface truncate">{adminProfile.name}</h3>
-            <p className="text-[10px] text-primary tracking-wider uppercase font-semibold">
-              Founder & Stylist (Admin)
-            </p>
           </div>
           <div className="p-2 rounded-full bg-primary/10 text-primary" title="Acceso protegido">
             <Lock size={15} />
           </div>
         </div>
 
-        {/* Notice of transient local barrier (OWASP recommendation) */}
-        <div className="flex items-start gap-2 text-[11px] text-on-surface-variant/80 bg-surface-container/40 p-3 rounded-xl border border-outline-variant/15">
-          <ShieldCheck size={16} className="text-primary shrink-0 mt-0.5" />
-          <p className="leading-relaxed">
-            Ingresa tu PIN de seguridad para acceder al sistema.
-            <span className="block text-[10px] text-primary/80 font-medium mt-1">
-              (PIN inicial predeterminado: <strong>1234</strong>)
-            </span>
-          </p>
-        </div>
-
-        {/* PIN Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant block">
+        {/* PIN Form with subtle bounce on digits, shake on error, and smooth eye toggle */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant block text-center">
               PIN de Acceso
             </label>
-            <div className="relative">
+
+            {/* Interactive Animated PIN Display */}
+            <div
+              onClick={() => inputRef.current?.focus()}
+              className={`relative cursor-text flex items-center justify-center gap-3 py-3.5 px-4 bg-surface-container-low rounded-2xl border transition-all duration-300 ${
+                error
+                  ? 'border-terracotta/60 bg-terracotta/5'
+                  : 'border-outline-variant/40 hover:border-primary/40 focus-within:border-primary'
+              } ${isShaking ? 'animate-pin-shake' : ''}`}
+            >
+              {/* Invisible native input for accessibility & soft keyboards */}
               <input
+                ref={inputRef}
                 type={showPin ? 'text' : 'password'}
                 inputMode="numeric"
                 pattern="[0-9]*"
                 maxLength={8}
                 autoFocus
                 required
-                placeholder="••••"
                 value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                className="w-full bg-surface-container-low text-center text-xl tracking-[0.3em] font-mono py-3 px-4 rounded-xl border border-outline-variant/40 focus:outline-none focus:border-primary font-bold text-primary transition-all"
+                onChange={handlePinChange}
+                className="opacity-0 absolute inset-0 w-full h-full cursor-text"
+                aria-label="PIN de seguridad"
               />
+
+              {/* Visual Bullets/Digits with Scale/Bounce on Typing */}
+              <div className="flex items-center justify-center gap-3 pointer-events-none">
+                {Array.from({ length: slotCount }).map((_, idx) => {
+                  const hasChar = idx < pin.length;
+                  const char = pin[idx];
+                  const isLatest = idx === lastTypedIndex;
+
+                  return (
+                    <div
+                      key={`pin-slot-${idx}`}
+                      className={`w-10 h-11 sm:w-11 sm:h-12 rounded-xl flex items-center justify-center border transition-all duration-200 ${
+                        hasChar
+                          ? 'border-primary/50 bg-surface-container-lowest hard-shadow'
+                          : 'border-outline-variant/30 bg-surface-container/30'
+                      } ${isLatest && hasChar ? 'animate-pin-bounce' : ''}`}
+                    >
+                      {hasChar ? (
+                        <span
+                          className={`font-mono text-lg font-bold text-primary transition-all duration-300 transform ${
+                            showPin
+                              ? 'opacity-100 scale-100'
+                              : 'opacity-0 scale-50'
+                          }`}
+                        >
+                          {showPin ? char : ''}
+                        </span>
+                      ) : null}
+
+                      {hasChar && !showPin && (
+                        <span
+                          className={`w-3 h-3 rounded-full bg-primary transition-all duration-300 transform ${
+                            isLatest ? 'animate-pin-bounce' : ''
+                          }`}
+                        />
+                      )}
+
+                      {!hasChar && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-outline-variant/40" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Smooth Toggle Show/Hide PIN Eye Button */}
               <button
                 type="button"
-                onClick={() => setShowPin(!showPin)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60 hover:text-primary p-1.5 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowPin(!showPin);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60 hover:text-primary p-2 rounded-full hover:bg-surface-container transition-all duration-200 active:scale-90"
                 title={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
+                aria-label={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
               >
-                {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                <div className="relative w-4 h-4 flex items-center justify-center">
+                  <div
+                    className={`transition-all duration-300 absolute inset-0 flex items-center justify-center ${
+                      showPin ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 rotate-90 scale-75'
+                    }`}
+                  >
+                    <EyeOff size={16} />
+                  </div>
+                  <div
+                    className={`transition-all duration-300 absolute inset-0 flex items-center justify-center ${
+                      !showPin ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-75'
+                    }`}
+                  >
+                    <Eye size={16} />
+                  </div>
+                </div>
               </button>
             </div>
           </div>
 
           {error && (
-            <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-700 text-xs text-center font-medium">
+            <div className="p-2.5 rounded-xl bg-terracotta/10 border border-terracotta/20 text-terracotta text-xs text-center font-medium animate-in fade-in duration-200">
               {error}
             </div>
           )}
@@ -140,14 +228,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
           <button
             type="submit"
             disabled={loading || !pin.trim()}
-            className="w-full py-3 bg-primary text-white rounded-xl text-xs uppercase tracking-widest font-bold hover:bg-primary/95 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+            className="w-full py-3.5 bg-primary text-white rounded-xl text-xs uppercase tracking-widest font-bold hover:bg-primary/95 hover:shadow-lg active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 cursor-pointer editorial-shadow"
           >
-            {loading ? 'Verificando...' : 'Desbloquear y Acceder'}
+            {loading ? (
+              <>
+                <Loader2 size={15} className="animate-spin text-white" />
+                <span>Verificando acceso...</span>
+              </>
+            ) : (
+              <span>Desbloquear y Acceder</span>
+            )}
           </button>
         </form>
 
         <div className="pt-2 border-t border-outline-variant/20 text-center">
-          <p className="text-[10px] text-on-surface-variant/50">
+          <p className="text-[10px] text-on-surface-variant/50 font-serif italic">
             Beauty Space • Seguridad de datos y privacidad en terminal local
           </p>
         </div>

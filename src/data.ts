@@ -1,4 +1,4 @@
-import { Client, Service, Appointment, FinancialMovement, SpecialPrice } from './types';
+import { Client, Service, Appointment, FinancialMovement, SpecialPrice, Extra } from './types';
 
 export const SEED_CLIENTS: Client[] = [
   {
@@ -292,5 +292,141 @@ export const SEED_FINANCIALS: FinancialMovement[] = [
     date: '2026-07-12',
     description: 'Facturación acumulada Julio primera quincena',
     paymentMethod: 'TARJETA'
+  }
+];
+
+export const SEED_EXTRAS: Extra[] = [
+  {
+    id: 'extra-1',
+    name: 'Espejo',
+    pricePerNail: 1000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1000, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-2',
+    name: 'Aurora',
+    pricePerNail: 1000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1000, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-3',
+    name: 'Azúcar',
+    pricePerNail: 1000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1000, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-4',
+    name: 'Suéter',
+    pricePerNail: 1200,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1200, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-5',
+    name: 'Perla',
+    pricePerNail: 1000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1000, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-6',
+    name: 'Glitter',
+    pricePerNail: 1000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1000, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-7',
+    name: 'Carey',
+    pricePerNail: 1500,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1500, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-8',
+    name: 'Blooming',
+    pricePerNail: 1500,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1500, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-9',
+    name: 'Ojo de gato',
+    pricePerNail: 1500,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1500, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-10',
+    name: 'Relieve',
+    pricePerNail: 1800,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1800, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-11',
+    name: '3D',
+    pricePerNail: 2000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 2000, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-12',
+    name: 'Francés',
+    pricePerNail: 1000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1000, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-13',
+    name: 'Nail Art simple',
+    pricePerNail: 1200,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1200, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-14',
+    name: 'Encapsulado',
+    pricePerNail: 1500,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1500, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-15',
+    name: 'Naturaleza muerta',
+    pricePerNail: 1500,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1500, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-16',
+    name: 'Dijes',
+    pricePerNail: 1500,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1500, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-17',
+    name: 'Sticker',
+    pricePerNail: 1200,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1200, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-18',
+    name: 'Hoja de oro',
+    pricePerNail: 1000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1000, reason: 'Tarifa inicial' }]
+  },
+  {
+    id: 'extra-19',
+    name: 'Diseño de cristales',
+    pricePerNail: 1000,
+    serviceId: null,
+    priceHistory: [{ date: '2024-01-01', price: 1000, reason: 'Tarifa inicial' }]
   }
 ];

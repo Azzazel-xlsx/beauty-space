@@ -62,4 +62,24 @@
   background: #526138;
 }
 
+@keyframes pinBounce {
+  0% { transform: scale(0.9); }
+  50% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+
+@keyframes pinShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+.animate-pin-bounce {
+  animation: pinBounce 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-pin-shake {
+  animation: pinShake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
 

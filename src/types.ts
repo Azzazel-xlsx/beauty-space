@@ -10,15 +10,6 @@ export interface Client {
   notes: string;
   photoUrl: string;
   createdAt: string;
-  photos?: ClientPhoto[];
-}
-
-export interface ClientPhoto {
-  id: string;
-  date: string;
-  beforeUrl: string;
-  afterUrl: string;
-  notes?: string;
 }
 
 export interface ServicePriceHistory {
@@ -27,12 +18,34 @@ export interface ServicePriceHistory {
   reason?: string;
 }
 
+export interface ExtraPriceHistory {
+  date: string;
+  price: number;
+  reason?: string;
+}
+
+export interface Extra {
+  id: string;
+  name: string;
+  pricePerNail: number; // Unit price per nail
+  serviceId?: string | null; // null or undefined = global
+  priceHistory: ExtraPriceHistory[];
+}
+
+export interface AppointmentExtra {
+  extraId: string;
+  name: string;
+  pricePerNail: number;
+  quantity: number; // 0 to 10
+  subtotal: number;
+}
+
 export interface Service {
   id: string;
   name: string;
   description: string;
   basePrice: number;
-  duration?: number; // in minutes
+  duration?: number; // in minutes (approximate duration)
   priceHistory: ServicePriceHistory[];
 }
 
@@ -44,7 +57,10 @@ export interface Appointment {
   time: string;
   duration: number; // in minutes
   isHomeVisit: boolean;
+  homeVisitFee?: number; // Surcharge for home visit
   status: 'pending' | 'completed' | 'cancelled' | 'reagendada';
+  basePrice?: number;
+  extras?: AppointmentExtra[];
   priceCharged: number;
   cancelReason?: string;
   rescheduledToId?: string; // Links to new appointment if rescheduled

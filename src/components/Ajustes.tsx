@@ -5,7 +5,9 @@ import { hashPin, generateSalt } from '../utils/crypto';
 import { downloadBackupFile, validateBackupJson, getStorageMetrics, CompleteBackupData } from '../utils/backup';
 import { safeSetItem, safeGetItem } from '../utils/storage';
 import { compressImage } from '../utils/imageCompressor';
+import { saveImageToIndexedDB } from '../utils/indexedDb';
 import { formatMoney } from '../utils/formatters';
+import { Modal } from './Modal';
 
 interface AjustesProps {
   priceChanges: PriceChangeEvent[];
@@ -46,6 +48,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
   const [restoreCandidate, setRestoreCandidate] = useState<CompleteBackupData | null>(null);
   const [restoreError, setRestoreError] = useState('');
   const [restoreSuccess, setRestoreSuccess] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
     setStorageMetrics(getStorageMetrics());
@@ -176,14 +179,28 @@ export const Ajustes: React.FC<AjustesProps> = ({
   // Admin Profile States
   const [profileName, setProfileName] = useState(adminProfile?.name || 'Valentina Moretti');
   const [profilePhoto, setProfilePhoto] = useState(adminProfile?.photoUrl || '');
+  const [photoSavedInIndexedDb, setPhotoSavedInIndexedDb] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(false);
+
+  useEffect(() => {
+    if (adminProfile?.name) setProfileName(adminProfile.name);
+    if (adminProfile?.photoUrl) setProfilePhoto(adminProfile.photoUrl);
+  }, [adminProfile?.name, adminProfile?.photoUrl]);
 
   const handleUpdateProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileName.trim()) return;
+
+    let targetPhotoRef = profilePhoto.trim();
+    if (photoSavedInIndexedDb || profilePhoto.startsWith('data:') || profilePhoto.startsWith('indexeddb:')) {
+      targetPhotoRef = 'indexeddb:admin_avatar';
+    } else if (!targetPhotoRef) {
+      targetPhotoRef = 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr';
+    }
+
     onUpdateAdminProfile({
       name: profileName.trim(),
-      photoUrl: profilePhoto.trim() || 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
+      photoUrl: targetPhotoRef
     });
     setProfileSuccess(true);
     setTimeout(() => setProfileSuccess(false), 3000);
@@ -198,9 +215,12 @@ export const Ajustes: React.FC<AjustesProps> = ({
           maxHeight: 400,
           quality: 0.85
         });
+        // Offload heavy image binary to IndexedDB, saving precious localStorage quota
+        await saveImageToIndexedDB('admin_avatar', compressed);
         setProfilePhoto(compressed);
+        setPhotoSavedInIndexedDb(true);
       } catch (err) {
-        console.error('Error al comprimir foto de perfil:', err);
+        console.error('Error al comprimir o guardar foto de perfil en IndexedDB:', err);
       }
     }
   };
@@ -233,11 +253,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       
-      {/* Upper Panel Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      {/* Upper Panel Grid: Balanced 2-Column Responsive Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
         
-        {/* LEFT COLUMN: Categories & Payment Methods Management */}
-        <div className="lg:col-span-5 space-y-6">
+        {/* COLUMN 1: Perfil, Seguridad y Catálogos Operativos */}
+        <div className="space-y-6">
           
           {/* Perfil de Administradora */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
@@ -298,8 +318,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   <input
                     type="text"
                     placeholder="https://..."
-                    value={profilePhoto.startsWith('data:') ? '' : profilePhoto}
-                    onChange={(e) => setProfilePhoto(e.target.value)}
+                    value={profilePhoto.startsWith('data:') || profilePhoto.startsWith('indexeddb:') ? '' : profilePhoto}
+                    onChange={(e) => {
+                      setProfilePhoto(e.target.value);
+                      setPhotoSavedInIndexedDb(false);
+                    }}
                     className="w-full bg-surface-container-low text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
                   />
                 </div>
@@ -436,93 +459,155 @@ export const Ajustes: React.FC<AjustesProps> = ({
             </div>
           </div>
 
-          {/* Expense Categories */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-            <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
-              <ClipboardList size={16} /> Categorías de Egresos
-            </h3>
-            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Administra las clasificaciones para tus reportes de gastos.
-            </p>
-            <div className="wavy-divider opacity-30"></div>
+          {/* Subgrid: Categorías & Métodos de Pago */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-6">
+            
+            {/* Expense Categories */}
+            <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+              <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
+                <ClipboardList size={16} /> Categorías de Egresos
+              </h3>
+              <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
+                Administra las clasificaciones para tus reportes de gastos.
+              </p>
+              <div className="wavy-divider opacity-30"></div>
 
-            {catError && (
-              <p className="text-[11px] font-semibold text-terracotta bg-terracotta/5 p-2 rounded-lg">{catError}</p>
-            )}
+              {catError && (
+                <p className="text-[11px] font-semibold text-terracotta bg-terracotta/5 p-2 rounded-lg">{catError}</p>
+              )}
 
-            <form onSubmit={handleAddCategory} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Nueva categoría..."
-                value={newCat}
-                onChange={(e) => setNewCat(e.target.value)}
-                className="flex-1 bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
-              />
-              <button
-                type="submit"
-                className="px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center"
-              >
-                <Plus size={14} />
-              </button>
-            </form>
+              <form onSubmit={handleAddCategory} className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Nueva categoría..."
+                  value={newCat}
+                  onChange={(e) => setNewCat(e.target.value)}
+                  className="flex-1 bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                />
+                <button
+                  type="submit"
+                  className="px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center cursor-pointer"
+                >
+                  <Plus size={14} />
+                </button>
+              </form>
 
-            <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
-              {categories.map((cat) => (
-                <div key={cat} className="flex items-center justify-between py-2 px-3 bg-surface-container/30 border border-outline-variant/10 rounded-xl text-xs font-semibold">
-                  <span className="text-on-surface-variant">{cat}</span>
-                  <button
-                    onClick={() => onDeleteCategory(cat)}
-                    className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
+              <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
+                {categories.map((cat) => (
+                  <div key={cat} className="flex items-center justify-between py-2 px-3 bg-surface-container/30 border border-outline-variant/10 rounded-xl text-xs font-semibold">
+                    <span className="text-on-surface-variant">{cat}</span>
+                    <button
+                      onClick={() => onDeleteCategory(cat)}
+                      className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
+
+            {/* Payment Methods */}
+            <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+              <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
+                <CreditCard size={16} /> Métodos de Pago
+              </h3>
+              <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
+                Define las modalidades de cobro habilitadas en tu flujo diario.
+              </p>
+              <div className="wavy-divider opacity-30"></div>
+
+              {methodError && (
+                <p className="text-[11px] font-semibold text-terracotta bg-terracotta/5 p-2 rounded-lg">{methodError}</p>
+              )}
+
+              <form onSubmit={handleAddMethod} className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ej. MercadoPago..."
+                  value={newMethod}
+                  onChange={(e) => setNewMethod(e.target.value)}
+                  className="flex-1 bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold uppercase placeholder:normal-case"
+                />
+                <button
+                  type="submit"
+                  className="px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center cursor-pointer"
+                >
+                  <Plus size={14} />
+                </button>
+              </form>
+
+              <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
+                {paymentMethods.map((method) => (
+                  <div key={method} className="flex items-center justify-between py-2 px-3 bg-surface-container/30 border border-outline-variant/10 rounded-xl text-xs font-bold uppercase tracking-wider text-on-surface">
+                    <span>{method}</span>
+                    <button
+                      onClick={() => onDeletePaymentMethod(method)}
+                      className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
 
-          {/* Payment Methods */}
+        </div>
+
+        {/* COLUMN 2: Auditoría, Respaldo y Mantenimiento */}
+        <div className="space-y-6">
+
+          {/* PRICE CHANGE AUDIT TIMELINE */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-            <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
-              <CreditCard size={16} /> Métodos de Pago
-            </h3>
-            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Define las modalidades de cobro habilitadas en tu flujo diario.
-            </p>
-            <div className="wavy-divider opacity-30"></div>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-serif text-base font-black text-primary flex items-center gap-1.5">
+                  <Settings size={18} /> Auditoría Completa de Precios
+                </h3>
+                <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/60 font-bold mt-0.5">Historial completo de modificaciones de tarifas</p>
+              </div>
+              <span className="text-[9px] font-black bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full uppercase">
+                {priceChanges.length} Cambios
+              </span>
+            </div>
 
-            {methodError && (
-              <p className="text-[11px] font-semibold text-terracotta bg-terracotta/5 p-2 rounded-lg">{methodError}</p>
-            )}
+            <div className="wavy-divider opacity-40"></div>
 
-            <form onSubmit={handleAddMethod} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Ej. MercadoPago..."
-                value={newMethod}
-                onChange={(e) => setNewMethod(e.target.value)}
-                className="flex-1 bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold uppercase placeholder:normal-case"
-              />
-              <button
-                type="submit"
-                className="px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center"
-              >
-                <Plus size={14} />
-              </button>
-            </form>
-
-            <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
-              {paymentMethods.map((method) => (
-                <div key={method} className="flex items-center justify-between py-2 px-3 bg-surface-container/30 border border-outline-variant/10 rounded-xl text-xs font-bold uppercase tracking-wider text-on-surface">
-                  <span>{method}</span>
-                  <button
-                    onClick={() => onDeletePaymentMethod(method)}
-                    className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all"
-                  >
-                    <Trash2 size={12} />
-                  </button>
+            {/* List of price audit modifications */}
+            <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
+              {priceChanges.length === 0 ? (
+                <div className="py-20 text-center text-xs text-on-surface-variant/50 font-semibold border border-dashed border-outline-variant/25 rounded-2xl">
+                  No se registran cambios de tarifas o auditoría de precios en esta sesión. Todo se mantiene en valores estándar.
                 </div>
-              ))}
+              ) : (
+                <div className="relative border-l-2 border-outline-variant/40 ml-2.5 pl-4 space-y-5 py-1">
+                  {priceChanges.map((event) => (
+                    <div key={event.id} className="relative space-y-1.5 text-xs">
+                      {/* Node dot */}
+                      <span className="absolute -left-[24.5px] top-1.5 w-3 h-3 rounded-full border-2 border-primary bg-white"></span>
+                      
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <h4 className="font-bold text-on-surface">{event.name}</h4>
+                          <p className="text-[10px] text-on-surface-variant/50 font-semibold">{event.date} • Resp: {event.user}</p>
+                        </div>
+                        <div className="text-right flex items-baseline gap-1.5">
+                          <span className="text-[10px] text-on-surface-variant/50 font-medium line-through">{formatMoney(event.oldPrice)}</span>
+                          <span className="font-mono text-primary font-black text-sm">{formatMoney(event.newPrice)}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-surface-container/45 px-3 py-2 rounded-xl border border-outline-variant/10">
+                        <p className="text-[11px] text-on-surface-variant/85 italic">
+                          "{event.reason || 'Actualización periódica por costos/inflación.'}"
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -571,7 +656,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                 type="button"
                 onClick={handleExportBackup}
                 disabled={isExporting}
-                className="py-2.5 px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                className="py-2.5 px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
               >
                 <Download size={14} />
                 {isExporting ? 'Exportando...' : 'Descargar Backup'}
@@ -645,14 +730,14 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   <button
                     type="button"
                     onClick={handleConfirmRestore}
-                    className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/95 transition-all shadow-xs"
+                    className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/95 transition-all shadow-xs cursor-pointer"
                   >
                     Confirmar y Restaurar
                   </button>
                   <button
                     type="button"
                     onClick={() => setRestoreCandidate(null)}
-                    className="py-2 px-3 border border-outline-variant/30 text-on-surface-variant text-xs font-semibold rounded-xl hover:bg-surface-container-high transition-all"
+                    className="py-2 px-3 border border-outline-variant/30 text-on-surface-variant text-xs font-semibold rounded-xl hover:bg-surface-container-high transition-all cursor-pointer"
                   >
                     Cancelar
                   </button>
@@ -678,12 +763,8 @@ export const Ajustes: React.FC<AjustesProps> = ({
               Esta herramienta restablecerá toda la base de datos de <strong>Beauty Space</strong> a sus valores semilla predeterminados. Esta acción es irreversible.
             </p>
             <button
-              onClick={() => {
-                if (confirm('¿ATENCIÓN: Estás segura de que deseas eliminar todas las citas, clientes y movimientos de finanzas registrados para restablecer las semillas iniciales?')) {
-                  onResetDatabase();
-                }
-              }}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-terracotta/35 text-xs text-terracotta font-bold hover:bg-terracotta/10 transition-all"
+              onClick={() => setShowResetConfirm(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-terracotta/35 text-xs text-terracotta font-bold hover:bg-terracotta/10 transition-all cursor-pointer"
             >
               <RefreshCw size={13} /> Restablecer Base de Datos
             </button>
@@ -691,59 +772,42 @@ export const Ajustes: React.FC<AjustesProps> = ({
 
         </div>
 
-        {/* RIGHT COLUMN: PRICE CHANGE AUDIT TIMELINE (Takes 7 Cols on Desktop) */}
-        <div className="lg:col-span-7 bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-serif text-base font-black text-primary flex items-center gap-1.5">
-                <Settings size={18} /> Auditoría Completa de Precios
-              </h3>
-              <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/60 font-bold mt-0.5">Historial completo de modificaciones de tarifas</p>
-            </div>
-            <span className="text-[9px] font-black bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full uppercase">
-              {priceChanges.length} Cambios
-            </span>
-          </div>
+      </div>
 
-          <div className="wavy-divider opacity-40"></div>
-
-          {/* List of price audit modifications */}
-          <div className="space-y-4 max-h-[560px] overflow-y-auto pr-1">
-            {priceChanges.length === 0 ? (
-              <div className="py-24 text-center text-xs text-on-surface-variant/50 font-semibold border border-dashed border-outline-variant/25 rounded-2xl">
-                No se registran cambios de tarifas o auditoría de precios en esta sesión. Todo se mantiene en valores estándar.
-              </div>
-            ) : (
-              <div className="relative border-l-2 border-outline-variant/40 ml-2.5 pl-4 space-y-5 py-1">
-                {priceChanges.map((event) => (
-                  <div key={event.id} className="relative space-y-1.5 text-xs">
-                    {/* Node dot */}
-                    <span className="absolute -left-[24.5px] top-1.5 w-3 h-3 rounded-full border-2 border-primary bg-white"></span>
-                    
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h4 className="font-bold text-on-surface">{event.name}</h4>
-                        <p className="text-[10px] text-on-surface-variant/50 font-semibold">{event.date} • Resp: {event.user}</p>
-                      </div>
-                      <div className="text-right flex items-baseline gap-1.5">
-                        <span className="text-[10px] text-on-surface-variant/50 font-medium line-through">{formatMoney(event.oldPrice)}</span>
-                        <span className="font-mono text-primary font-black text-sm">{formatMoney(event.newPrice)}</span>
-                      </div>
-                    </div>
-
-                    <div className="bg-surface-container/45 px-3 py-2 rounded-xl border border-outline-variant/10">
-                      <p className="text-[11px] text-on-surface-variant/85 italic">
-                        "{event.reason || 'Actualización periódica por costos/inflación.'}"
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+      {/* CONFIRMATION MODAL: RESTABLECER BASE DE DATOS */}
+      <Modal
+        isOpen={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        icon={<ShieldAlert size={18} className="text-terracotta" />}
+        title="¿Restablecer Base de Datos?"
+        subtitle="Acción irreversible de mantenimiento"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-on-surface-variant/80 leading-relaxed">
+            ¿Estás segura de que deseas eliminar todas las citas, clientes y movimientos de finanzas registrados para restablecer las semillas iniciales?
+          </p>
+          <div className="flex gap-2.5 justify-end pt-1">
+            <button
+              type="button"
+              onClick={() => setShowResetConfirm(false)}
+              className="flex-1 py-2.5 px-4 bg-surface-container-high rounded-xl text-xs font-bold text-on-surface hover:bg-surface-container-high/80 active:scale-95 transition-all cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onResetDatabase();
+                setShowResetConfirm(false);
+              }}
+              className="flex-1 py-2.5 px-4 bg-terracotta text-white rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 active:scale-95 transition-all cursor-pointer"
+            >
+              Sí, Restablecer
+            </button>
           </div>
         </div>
-
-      </div>
+      </Modal>
 
     </div>
   );

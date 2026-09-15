@@ -8,16 +8,18 @@ import { Ajustes } from './components/Ajustes';
 import { LoginScreen } from './components/LoginScreen';
 import { Clock, AlertTriangle } from 'lucide-react';
 
-import { Client, Service, Appointment, FinancialMovement, SpecialPrice, PriceChangeEvent, AdminProfile } from './types';
+import { Client, Service, Appointment, FinancialMovement, SpecialPrice, PriceChangeEvent, AdminProfile, Extra, AppointmentExtra } from './types';
 import { applyRestoreBackup, CompleteBackupData } from './utils/backup';
 import { generateId } from './utils/id';
 import { safeGetJson, safeSetJson, safeRemoveItem } from './utils/storage';
+import { getImageFromIndexedDB, saveImageToIndexedDB } from './utils/indexedDb';
 import {
   SEED_CLIENTS,
   SEED_SERVICES,
   SEED_SPECIAL_PRICES,
   SEED_APPOINTMENTS,
-  SEED_FINANCIALS
+  SEED_FINANCIALS,
+  SEED_EXTRAS
 } from './data';
 
 export default function App() {
@@ -43,6 +45,8 @@ export default function App() {
   const [clients, setClients] = useState<Client[]>(() => safeGetJson('bs_clients', SEED_CLIENTS));
 
   const [services, setServices] = useState<Service[]>(() => safeGetJson('bs_services', SEED_SERVICES));
+
+  const [extras, setExtras] = useState<Extra[]>(() => safeGetJson('bs_extras', SEED_EXTRAS));
 
   const [specialPrices, setSpecialPrices] = useState<SpecialPrice[]>(() => safeGetJson('bs_special_prices', SEED_SPECIAL_PRICES));
 
@@ -74,6 +78,56 @@ export default function App() {
     photoUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
   }));
 
+  const [resolvedAdminPhoto, setResolvedAdminPhoto] = useState<string | null>(null);
+
+  // Synchronize admin avatar from IndexedDB when stored as a reference
+  useEffect(() => {
+    let isMounted = true;
+    async function syncAdminPhoto() {
+      if (adminProfile.photoUrl.startsWith('indexeddb:') || adminProfile.photoUrl.startsWith('id:')) {
+        const id = adminProfile.photoUrl.replace(/^(indexeddb:|id:)/, '') || 'admin_avatar';
+        const dataUrl = await getImageFromIndexedDB(id);
+        if (isMounted && dataUrl) {
+          setResolvedAdminPhoto(dataUrl);
+        }
+      } else if (adminProfile.photoUrl.startsWith('data:')) {
+        // Transparent migration: move heavy data-URL from localStorage to IndexedDB
+        await saveImageToIndexedDB('admin_avatar', adminProfile.photoUrl);
+        if (isMounted) {
+          setResolvedAdminPhoto(adminProfile.photoUrl);
+          setAdminProfile((prev) => ({ ...prev, photoUrl: 'indexeddb:admin_avatar' }));
+        }
+      } else {
+        if (isMounted) {
+          setResolvedAdminPhoto(null);
+        }
+      }
+    }
+    syncAdminPhoto();
+    return () => {
+      isMounted = false;
+    };
+  }, [adminProfile.photoUrl]);
+
+  const handleUpdateAdminProfile = (newProfile: { name: string; photoUrl: string }) => {
+    setAdminProfile(newProfile);
+    if (newProfile.photoUrl.startsWith('indexeddb:')) {
+      const id = newProfile.photoUrl.replace(/^indexeddb:/, '') || 'admin_avatar';
+      getImageFromIndexedDB(id).then((dataUrl) => {
+        if (dataUrl) setResolvedAdminPhoto(dataUrl);
+      });
+    } else if (!newProfile.photoUrl.startsWith('data:')) {
+      setResolvedAdminPhoto(null);
+    }
+  };
+
+  const effectiveAdminProfile = {
+    name: adminProfile.name,
+    photoUrl: resolvedAdminPhoto || (adminProfile.photoUrl.startsWith('indexeddb:')
+      ? 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
+      : adminProfile.photoUrl)
+  };
+
   // Sync states safely back to storage with error handling
   useEffect(() => {
     const res = safeSetJson('bs_clients', clients);
@@ -88,6 +142,10 @@ export default function App() {
       setStorageErrorBanner('Límite de almacenamiento alcanzado. Descarga un Respaldo JSON desde Ajustes.');
     }
   }, [services]);
+
+  useEffect(() => {
+    safeSetJson('bs_extras', extras);
+  }, [extras]);
 
   useEffect(() => {
     const res = safeSetJson('bs_special_prices', specialPrices);
@@ -211,10 +269,10 @@ export default function App() {
     );
   };
 
-  const handleUpdateClientPhotos = (clientId: string, photos: Client['photos']) => {
-    setClients((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, photos } : c))
-    );
+  const handleDeleteClient = (clientId: string) => {
+    setClients((prev) => prev.filter((c) => c.id !== clientId));
+    // Clean up associated special preferential prices
+    setSpecialPrices((prev) => prev.filter((sp) => sp.clientId !== clientId));
   };
 
 
@@ -270,6 +328,46 @@ export default function App() {
   const handleDeleteService = (serviceId: string) => {
     setServices((prev) => prev.filter((s) => s.id !== serviceId));
     setSpecialPrices((prev) => prev.filter((sp) => sp.serviceId !== serviceId));
+  };
+
+  // ==================== WORKFLOW: EXTRAS ====================
+  const handleAddExtra = (newExtra: Omit<Extra, 'id' | 'priceHistory'> & { initialPrice: number }) => {
+    const extra: Extra = {
+      id: generateId('extra'),
+      name: newExtra.name,
+      pricePerNail: newExtra.pricePerNail,
+      serviceId: newExtra.serviceId,
+      priceHistory: [
+        {
+          date: new Date().toISOString().split('T')[0],
+          price: newExtra.initialPrice,
+          reason: 'Tarifa inicial registrada.'
+        }
+      ]
+    };
+    setExtras((prev) => [...prev, extra]);
+  };
+
+  const handleUpdateExtraPrice = (extraId: string, newPrice: number, date: string, reason?: string) => {
+    setExtras((prev) =>
+      prev.map((extra) => {
+        if (extra.id === extraId) {
+          return {
+            ...extra,
+            pricePerNail: newPrice,
+            priceHistory: [
+              { date, price: newPrice, reason },
+              ...extra.priceHistory
+            ]
+          };
+        }
+        return extra;
+      })
+    );
+  };
+
+  const handleDeleteExtra = (extraId: string) => {
+    setExtras((prev) => prev.filter((e) => e.id !== extraId));
   };
 
 
@@ -406,6 +504,33 @@ export default function App() {
     );
   };
 
+  const handleDeleteAppointment = (id: string) => {
+    setAppointments((prev) => prev.filter((appt) => appt.id !== id));
+  };
+
+  const handleUpdateAppointmentExtras = (
+    appointmentId: string,
+    updatedExtras: AppointmentExtra[],
+    isHomeVisit: boolean,
+    homeVisitFee: number,
+    newTotal: number
+  ) => {
+    setAppointments((prev) =>
+      prev.map((appt) => {
+        if (appt.id === appointmentId) {
+          return {
+            ...appt,
+            extras: updatedExtras,
+            isHomeVisit,
+            homeVisitFee,
+            priceCharged: newTotal
+          };
+        }
+        return appt;
+      })
+    );
+  };
+
 
   // ==================== WORKFLOW: SETTINGS & DATABASE MAINTENANCE ====================
   const handleAddCategory = (category: string) => {
@@ -473,7 +598,7 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <LoginScreen
-        adminProfile={adminProfile}
+        adminProfile={effectiveAdminProfile}
         onLoginSuccess={handleLoginSuccess}
       />
     );
@@ -483,7 +608,7 @@ export default function App() {
     <Layout
       activeTab={activeTab}
       setActiveTab={setActiveTab}
-      adminProfile={adminProfile}
+      adminProfile={effectiveAdminProfile}
       onLogout={handleLogout}
     >
       {storageErrorBanner && (
@@ -533,9 +658,13 @@ export default function App() {
       {activeTab === 'servicios' && (
         <Servicios
           services={services}
+          extras={extras}
           onAddService={handleAddService}
           onUpdateServicePrice={handleUpdateServicePrice}
           onDeleteService={handleDeleteService}
+          onAddExtra={handleAddExtra}
+          onUpdateExtraPrice={handleUpdateExtraPrice}
+          onDeleteExtra={handleDeleteExtra}
         />
       )}
 
@@ -544,10 +673,13 @@ export default function App() {
           appointments={appointments}
           clients={clients}
           services={services}
+          extras={extras}
           specialPrices={specialPrices}
           onAddAppointment={handleAddAppointment}
           onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
+          onUpdateAppointmentExtras={handleUpdateAppointmentExtras}
           onCompleteAppointmentAndCharge={handleCompleteAppointmentAndCharge}
+          onDeleteAppointment={handleDeleteAppointment}
         />
       )}
 
@@ -559,7 +691,7 @@ export default function App() {
           specialPrices={specialPrices}
           onAddClient={handleAddClient}
           onUpdateClientNotes={handleUpdateClientNotes}
-          onUpdateClientPhotos={handleUpdateClientPhotos}
+          onDeleteClient={handleDeleteClient}
           onAddSpecialPrice={handleAddSpecialPrice}
           onDeleteSpecialPrice={handleDeleteSpecialPrice}
         />
@@ -575,8 +707,8 @@ export default function App() {
           onAddPaymentMethod={handleAddPaymentMethod}
           onDeletePaymentMethod={handleDeletePaymentMethod}
           onResetDatabase={handleResetDatabase}
-          adminProfile={adminProfile}
-          onUpdateAdminProfile={setAdminProfile}
+          adminProfile={effectiveAdminProfile}
+          onUpdateAdminProfile={handleUpdateAdminProfile}
           onRestoreBackup={handleRestoreBackup}
         />
       )}
