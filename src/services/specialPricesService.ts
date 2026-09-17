@@ -6,6 +6,12 @@ const STORAGE_KEY = 'bs_special_prices';
 
 /**
  * Servicio de Precios Especiales (Capa de abstracción de datos)
+ * 
+ * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
+ * por operaciones upsert/delete directas en PostgreSQL:
+ * - getSpecialPrices()    -> supabase.from('special_prices').select('*')
+ * - setSpecialPrice()     -> supabase.from('special_prices').upsert(row, { onConflict: 'client_id,service_id' }).select().single()
+ * - deleteSpecialPrice()  -> supabase.from('special_prices').delete().eq('id', id)
  */
 export const specialPricesService = {
   async getSpecialPrices(): Promise<SpecialPrice[]> {

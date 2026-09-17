@@ -6,6 +6,14 @@ const STORAGE_KEY = 'bs_services';
 
 /**
  * Servicio de Servicios y Catálogo (Capa de abstracción de datos)
+ * 
+ * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
+ * por consultas puntuales por fila:
+ * - getServices()        -> supabase.from('services').select('*, service_price_history(*)')
+ * - createService()      -> supabase.from('services').insert(row).select().single()
+ * - updateServicePrice() -> supabase.from('services').update({ base_price: newPrice }).eq('id', id)
+ *                           junto con insert en 'service_price_history'
+ * - deleteService()      -> supabase.from('services').delete().eq('id', id)
  */
 export const servicesService = {
   async getServices(): Promise<Service[]> {

@@ -22,6 +22,15 @@ const DEFAULT_ADMIN_PROFILE: AdminProfile = {
 
 /**
  * Servicio de Configuración y Ajustes (Capa de abstracción de datos)
+ * 
+ * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
+ * por consultas puntuales en las tablas dedicadas de PostgreSQL:
+ * - getCategories()     -> supabase.from('categories').select('name')
+ * - saveCategories()     -> inserción / eliminación de filas en 'categories'
+ * - getPaymentMethods() -> supabase.from('payment_methods').select('name')
+ * - savePaymentMethods() -> inserción / eliminación de filas en 'payment_methods'
+ * - getAdminProfile()   -> supabase.from('admin_profile').select('*').limit(1).single()
+ * - saveAdminProfile()  -> supabase.from('admin_profile').upsert(profile)
  */
 export const settingsService = {
   async getCategories(): Promise<string[]> {

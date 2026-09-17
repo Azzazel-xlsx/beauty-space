@@ -6,6 +6,14 @@ const STORAGE_KEY = 'bs_extras';
 
 /**
  * Servicio de Extras y Nail Art (Capa de abstracción de datos)
+ * 
+ * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
+ * por operaciones atómicas directas:
+ * - getExtras()        -> supabase.from('extras').select('*, extra_price_history(*)')
+ * - createExtra()      -> supabase.from('extras').insert(row).select().single()
+ * - updateExtraPrice() -> supabase.from('extras').update({ price_per_nail: newPrice }).eq('id', id)
+ *                         más insert en 'extra_price_history'
+ * - deleteExtra()      -> supabase.from('extras').delete().eq('id', id)
  */
 export const extrasService = {
   async getExtras(): Promise<Extra[]> {

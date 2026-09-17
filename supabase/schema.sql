@@ -8,31 +8,15 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- DECISIÓN ABIERTA DE MODELO DE ACCESO Y SEGURIDAD (PENDIENTE DE CONFIRMACIÓN):
+-- DECISIÓN ADOPTADA DE MODELO DE ACCESO Y SEGURIDAD:
 -- -----------------------------------------------------------------------------
--- Actualmente, Beauty Space opera como una aplicación single-tenant para una sola
--- administradora/estudio, protegida mediante un hash de PIN local (SHA-256) en el cliente.
---
--- Al migrar a Supabase, se debe elegir entre dos modelos arquitectónicos:
---
--- OPCIÓN (A) — Single-Tenant con API Key protegida por la app:
---   - Se mantiene la base de datos exclusiva para un solo salón.
---   - Se configuran políticas RLS permisivas para `anon` o se accede mediante
---     un endpoint / service role autenticado tras validar el PIN.
---   - Ventaja: Cero fricción de registro, mantiene idéntico el flujo actual de PIN.
---   - Desventaja: No permite múltiples salones o múltiples cuentas aisladas en la misma BD.
---
--- OPCIÓN (B) — Multi-Tenant o Single-Tenant con Supabase Auth & RLS por usuario:
---   - Cada administradora o empleada se registra en `auth.users` con email/contraseña
---     o magic link.
---   - Cada tabla incluye una columna `user_id uuid references auth.users(id) not null default auth.uid()`.
---   - Se habilitan políticas RLS estrictas:
---     `CREATE POLICY "Users can only access their own data" ON ... FOR ALL USING (auth.uid() = user_id);`
---   - Ventaja: Seguridad de nivel bancario, multi-sucursal/multi-inquilino nativo.
---   - Desventaja: Requiere sustituir el login de PIN por login de usuario/contraseña
---     o implementar un custom auth provider con PIN.
---
--- [ESTA DECISIÓN QUEDA PENDIENTE PARA QUE EL PROPIETARIO DEL PRODUCTO LA DEFINA]
+-- Arquitectura: Single-Tenant con autenticación real mediante Supabase Auth.
+-- - Se utiliza Supabase Auth (ej. signInWithPassword) para autenticar a la administradora.
+-- - Row Level Security (RLS) habilitado en TODAS las tablas.
+-- - Políticas `FOR ALL` que otorgan acceso completo a usuarios con rol `authenticated`:
+--     `USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated')`
+-- - Al ser un esquema single-tenant para un solo salón, no se requiere filtrar por `user_id`.
+-- - El PIN local puede reasignarse a función de bloqueo rápido de pantalla sobre una sesión viva.
 -- -----------------------------------------------------------------------------
 
 -- Habilitar extensión para generación de UUID v4
@@ -100,7 +84,7 @@ CREATE TABLE IF NOT EXISTS extra_price_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     extra_id UUID NOT NULL REFERENCES extras(id) ON DELETE CASCADE,
     date DATE NOT NULL DEFAULT CURRENT_DATE,
-    price NUMERIC(10, 2) NOT NULL CHECK (price_per_nail >= 0),
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
     reason TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -250,3 +234,102 @@ INSERT INTO payment_methods (name) VALUES
     ('EFECTIVO'),
     ('TARJETA')
 ON CONFLICT (name) DO NOTHING;
+
+-- =============================================================================
+-- 9. ROW LEVEL SECURITY (RLS) & POLÍTICAS DE ACCESO
+-- =============================================================================
+-- Esquema single-tenant protegido por Supabase Auth:
+-- Todas las tablas tienen RLS habilitado.
+-- El acceso completo (SELECT, INSERT, UPDATE, DELETE) se reserva a usuarios autenticados.
+
+-- 1. clients
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to clients"
+    ON clients FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 2. services
+ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to services"
+    ON services FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 3. service_price_history
+ALTER TABLE service_price_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to service_price_history"
+    ON service_price_history FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 4. extras
+ALTER TABLE extras ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to extras"
+    ON extras FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 5. extra_price_history
+ALTER TABLE extra_price_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to extra_price_history"
+    ON extra_price_history FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 6. appointments
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to appointments"
+    ON appointments FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 7. appointment_extras
+ALTER TABLE appointment_extras ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to appointment_extras"
+    ON appointment_extras FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 8. financial_movements
+ALTER TABLE financial_movements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to financial_movements"
+    ON financial_movements FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 9. special_prices
+ALTER TABLE special_prices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to special_prices"
+    ON special_prices FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 10. price_change_events
+ALTER TABLE price_change_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to price_change_events"
+    ON price_change_events FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 11. admin_profile
+ALTER TABLE admin_profile ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to admin_profile"
+    ON admin_profile FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 12. categories
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to categories"
+    ON categories FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+
+-- 13. payment_methods
+ALTER TABLE payment_methods ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users have full access to payment_methods"
+    ON payment_methods FOR ALL
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
+

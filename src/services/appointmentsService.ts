@@ -6,6 +6,13 @@ const STORAGE_KEY = 'bs_appointments';
 
 /**
  * Servicio de Citas y Agenda (Capa de abstracción de datos)
+ * 
+ * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
+ * por llamadas directas por fila a Supabase:
+ * - getAppointments()    -> supabase.from('appointments').select('*, appointment_extras(*)')
+ * - createAppointment()  -> supabase.from('appointments').insert(row).select().single()
+ * - updateAppointment()  -> supabase.from('appointments').update(updates).eq('id', id).select().single()
+ * - deleteAppointment()  -> supabase.from('appointments').delete().eq('id', id)
  */
 export const appointmentsService = {
   async getAppointments(): Promise<Appointment[]> {

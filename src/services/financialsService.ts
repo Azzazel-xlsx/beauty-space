@@ -6,6 +6,12 @@ const STORAGE_KEY = 'bs_movements';
 
 /**
  * Servicio de Movimientos Financieros (Capa de abstracción de datos)
+ * 
+ * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
+ * por sentencias SQL directas por fila:
+ * - getMovements()   -> supabase.from('financial_movements').select('*').order('date', { ascending: false })
+ * - createMovement() -> supabase.from('financial_movements').insert(row).select().single()
+ * - deleteMovement() -> supabase.from('financial_movements').delete().eq('id', id)
  */
 export const financialsService = {
   async getMovements(): Promise<FinancialMovement[]> {
