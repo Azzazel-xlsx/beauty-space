@@ -6,6 +6,7 @@ import { Agenda } from './components/Agenda';
 import { Clientas } from './components/Clientas';
 import { Ajustes } from './components/Ajustes';
 import { LoginScreen } from './components/LoginScreen';
+import { useToast } from './components/Toast';
 import { Clock, AlertTriangle } from 'lucide-react';
 
 import { Client, Service, Appointment, FinancialMovement, SpecialPrice, PriceChangeEvent, AdminProfile, Extra, AppointmentExtra } from './types';
@@ -23,6 +24,7 @@ import {
 } from './data';
 
 export default function App() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('finanzas');
 
   // Authentication & Session Guard (OWASP Broken Access Control transient protection)
@@ -74,7 +76,7 @@ export default function App() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>(() => safeGetJson('bs_payment_methods', ['TRANSFERENCIA', 'EFECTIVO', 'TARJETA']));
 
   const [adminProfile, setAdminProfile] = useState<{ name: string; photoUrl: string }>(() => safeGetJson('bs_admin_profile', {
-    name: 'Valentina Moretti',
+    name: 'Juliana castro',
     photoUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
   }));
 
@@ -412,6 +414,7 @@ export default function App() {
       id: newAppt.id || generateId('appt')
     };
     setAppointments((prev) => [...prev, appt]);
+    toast.success('Cita agendada con éxito.');
   };
 
   const handleUpdateAppointmentStatus = (
@@ -422,6 +425,12 @@ export default function App() {
   ) => {
     const targetAppt = appointments.find((a) => a.id === id);
     if (!targetAppt) return;
+
+    if (status === 'cancelled') {
+      toast.info('Cita cancelada.');
+    } else if (status === 'reagendada') {
+      toast.info('Cita marcada como reagendada.');
+    }
 
     // Side-effects should run outside of pure state setters
     if (targetAppt.status !== 'completed' && status === 'completed') {
@@ -444,6 +453,7 @@ export default function App() {
         costOfSupplies: 150, // Standard template default cost
         staffCommission: targetAppt.priceCharged * 0.15 // Standard default 15%
       });
+      toast.success('Cita completada y registrada en finanzas.');
     }
 
     setAppointments((prev) =>
@@ -502,10 +512,12 @@ export default function App() {
         return appt;
       })
     );
+    toast.success('Cita cobrada y completada exitosamente.');
   };
 
   const handleDeleteAppointment = (id: string) => {
     setAppointments((prev) => prev.filter((appt) => appt.id !== id));
+    toast.info('Cita eliminada de la agenda.');
   };
 
   const handleUpdateAppointmentExtras = (
@@ -529,6 +541,7 @@ export default function App() {
         return appt;
       })
     );
+    toast.success('Detalles y extras de la cita actualizados.');
   };
 
 
@@ -575,7 +588,7 @@ export default function App() {
     safeRemoveItem('bs_payment_methods');
     safeRemoveItem('bs_admin_profile');
 
-    alert('¡Base de datos restablecida correctamente a sus valores predeterminados de semilla!');
+    toast.success('¡Base de datos restablecida correctamente a sus valores predeterminados!');
   };
 
   const handleRestoreBackup = async (backup: CompleteBackupData) => {
@@ -592,6 +605,7 @@ export default function App() {
     if (payload.adminProfile) {
       setAdminProfile(payload.adminProfile);
     }
+    toast.success('¡Copia de seguridad restaurada correctamente!');
   };
 
 
@@ -612,14 +626,14 @@ export default function App() {
       onLogout={handleLogout}
     >
       {storageErrorBanner && (
-        <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-2.5 flex items-center justify-between text-xs text-red-800 animate-fadeIn">
+        <div className="bg-terracotta/10 border-b border-terracotta/20 px-4 py-2.5 flex items-center justify-between text-xs text-terracotta animate-fadeIn">
           <div className="flex items-center gap-2 font-medium">
-            <AlertTriangle size={14} className="text-red-600 shrink-0" />
+            <AlertTriangle size={14} className="text-terracotta shrink-0" />
             <span>{storageErrorBanner}</span>
           </div>
           <button
             onClick={() => setStorageErrorBanner(null)}
-            className="px-2.5 py-0.5 bg-red-600 text-white rounded-md text-[11px] font-bold hover:bg-red-700 transition-colors ml-4 shrink-0"
+            className="px-2.5 py-0.5 bg-terracotta text-white rounded-md text-[11px] font-bold hover:bg-terracotta/95 transition-colors ml-4 shrink-0 cursor-pointer"
           >
             Entendido
           </button>

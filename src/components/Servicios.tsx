@@ -3,6 +3,7 @@ import { Service, Extra } from '../types';
 import { Plus, Sparkles, Tag, Calendar, ChevronDown, ChevronUp, Clock, Trash2, Globe, Layers, X, AlertTriangle } from 'lucide-react';
 import { formatMoney } from '../utils/formatters';
 import { Modal } from './Modal';
+import { useToast } from './Toast';
 
 interface ServiciosProps {
   services: Service[];
@@ -25,6 +26,7 @@ export const Servicios: React.FC<ServiciosProps> = ({
   onUpdateExtraPrice,
   onDeleteExtra
 }) => {
+  const toast = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedSection, setExpandedSection] = useState<{ serviceId: string; type: 'extras' | 'prices' } | null>(null);
 
@@ -81,6 +83,8 @@ export const Servicios: React.FC<ServiciosProps> = ({
       initialPrice: parsedPrice
     });
 
+    toast.success(`Servicio "${newName.trim()}" creado.`);
+
     // Reset Form
     setNewName('');
     setNewDesc('');
@@ -95,16 +99,17 @@ export const Servicios: React.FC<ServiciosProps> = ({
     e.preventDefault();
     const parsedPrice = parseFloat(updatePriceVal);
     if (isNaN(parsedPrice) || parsedPrice <= 0) {
-      alert('Introduce un precio válido');
+      toast.error('Introduce un precio válido mayor a 0');
       return;
     }
     if (!updatePriceDate) {
-      alert('Elige una fecha para el registro histórico');
+      toast.error('Elige una fecha para el registro histórico');
       return;
     }
 
     const defaultReason = 'Actualización de tarifa por costes e inflación de insumos.';
     onUpdateServicePrice(serviceId, parsedPrice, updatePriceDate, updatePriceReason.trim() || defaultReason);
+    toast.success('Tarifa de servicio actualizada.');
     
     // Reset state
     setUpdatePriceVal('');
@@ -118,7 +123,7 @@ export const Servicios: React.FC<ServiciosProps> = ({
 
     const price = parseFloat(newExtraPricePerNail);
     if (isNaN(price) || price <= 0) {
-      alert('Introduce un precio por uña válido');
+      toast.error('Introduce un precio por uña válido');
       return;
     }
 
@@ -129,6 +134,8 @@ export const Servicios: React.FC<ServiciosProps> = ({
       initialPrice: price
     });
 
+    toast.success(`Diseño/extra "${newExtraName.trim()}" agregado.`);
+
     setNewExtraName('');
     setNewExtraPricePerNail('');
     setShowNewExtraFormForService(null);
@@ -138,12 +145,13 @@ export const Servicios: React.FC<ServiciosProps> = ({
     e.preventDefault();
     const parsedPrice = parseFloat(updateExtraPriceVal);
     if (isNaN(parsedPrice) || parsedPrice <= 0) {
-      alert('Introduce un precio por uña válido');
+      toast.error('Introduce un precio por uña válido');
       return;
     }
 
     const defaultReason = 'Ajuste de tarifa de diseño adicional.';
     onUpdateExtraPrice(extraId, parsedPrice, updateExtraPriceDate, updateExtraPriceReason.trim() || defaultReason);
+    toast.success('Precio de extra actualizado.');
 
     setUpdatingExtraId(null);
     setUpdateExtraPriceVal('');
@@ -720,8 +728,10 @@ export const Servicios: React.FC<ServiciosProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  const extraName = extraToDelete.name;
                   onDeleteExtra(extraToDelete.id);
                   setExtraToDelete(null);
+                  toast.info(`Diseño/extra "${extraName}" eliminado.`);
                 }}
                 className="flex-1 py-2.5 px-4 bg-terracotta text-white rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 active:scale-95 transition-all cursor-pointer"
               >
@@ -768,8 +778,10 @@ export const Servicios: React.FC<ServiciosProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  const sName = serviceToDelete.name;
                   onDeleteService(serviceToDelete.id);
                   setServiceToDelete(null);
+                  toast.info(`Servicio "${sName}" eliminado.`);
                 }}
                 className="flex-1 py-2.5 px-4 bg-terracotta text-white rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 active:scale-95 transition-all cursor-pointer"
               >

@@ -5,6 +5,7 @@ import { generateId } from '../utils/id';
 import { useDebounce } from '../hooks/useDebounce';
 import { formatMoney } from '../utils/formatters';
 import { compressImage } from '../utils/imageCompressor';
+import { useToast } from './Toast';
 
 interface ClientasProps {
   clients: Client[];
@@ -46,6 +47,7 @@ export const Clientas: React.FC<ClientasProps> = ({
   onAddSpecialPrice,
   onDeleteSpecialPrice
 }) => {
+  const toast = useToast();
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -111,7 +113,6 @@ export const Clientas: React.FC<ClientasProps> = ({
   // Notes state inside selected client view
   const [tempNotes, setTempNotes] = useState('');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
-  const [notesSuccess, setNotesSuccess] = useState(false);
 
   // Special prices assignment state inside selected client view
   const [showAddSpecialPriceForm, setShowAddSpecialPriceForm] = useState(false);
@@ -119,7 +120,6 @@ export const Clientas: React.FC<ClientasProps> = ({
   const [newSpecialPrice, setNewSpecialPrice] = useState('');
   const [newSpecialGroupLabel, setNewSpecialGroupLabel] = useState('CLIENTA FRECUENTE');
   const [specialPriceError, setSpecialPriceError] = useState('');
-  const [specialPriceSuccess, setSpecialPriceSuccess] = useState('');
 
   // Search debounce and pagination limit
   const debouncedSearch = useDebounce(searchTerm, 250);
@@ -179,10 +179,8 @@ export const Clientas: React.FC<ClientasProps> = ({
     if (selectedClient) {
       setTempNotes(selectedClient.notes || '');
       setIsEditingNotes(false);
-      setNotesSuccess(false);
       setShowAddSpecialPriceForm(false);
       setSpecialPriceError('');
-      setSpecialPriceSuccess('');
       if (services.length > 0) {
         setNewSpecialServiceId(services[0].id);
       }
@@ -242,6 +240,8 @@ export const Clientas: React.FC<ClientasProps> = ({
       photoUrl: customPhoto || PHOTO_PRESETS[avatarIndex]
     });
 
+    toast.success(`Clienta "${newName.trim()}" registrada con éxito.`);
+
     // Reset Form
     setNewName('');
     setNewPhone('');
@@ -257,8 +257,7 @@ export const Clientas: React.FC<ClientasProps> = ({
     if (selectedClientId) {
       onUpdateClientNotes(selectedClientId, tempNotes);
       setIsEditingNotes(false);
-      setNotesSuccess(true);
-      setTimeout(() => setNotesSuccess(false), 3000);
+      toast.success('¡Comentario personalizado guardado con éxito!');
     }
   };
 
@@ -267,11 +266,13 @@ export const Clientas: React.FC<ClientasProps> = ({
     if (!selectedClientId) return;
     if (!newSpecialServiceId) {
       setSpecialPriceError('Selecciona un servicio');
+      toast.warning('Selecciona un servicio para la tarifa.');
       return;
     }
     const parsedPrice = parseFloat(newSpecialPrice);
     if (isNaN(parsedPrice) || parsedPrice < 0) {
       setSpecialPriceError('Ingresa un precio válido (ej. 1500)');
+      toast.error('Ingresa un precio numérico válido.');
       return;
     }
 
@@ -286,8 +287,7 @@ export const Clientas: React.FC<ClientasProps> = ({
       setNewSpecialPrice('');
       setShowAddSpecialPriceForm(false);
       setSpecialPriceError('');
-      setSpecialPriceSuccess('¡Tarifa especial guardada exitosamente!');
-      setTimeout(() => setSpecialPriceSuccess(''), 3500);
+      toast.success('¡Tarifa especial guardada exitosamente!');
     }
   };
 
@@ -507,12 +507,6 @@ export const Clientas: React.FC<ClientasProps> = ({
 
             <div className="wavy-divider opacity-20"></div>
 
-            {notesSuccess && (
-              <div className="p-3 rounded-2xl bg-sage/15 border border-sage/30 text-sage text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200">
-                <Check size={15} /> ¡Comentario personalizado guardado con éxito!
-              </div>
-            )}
-
             {isEditingNotes ? (
               <div className="space-y-3">
                 <textarea
@@ -572,12 +566,6 @@ export const Clientas: React.FC<ClientasProps> = ({
             </div>
 
             <div className="wavy-divider opacity-20"></div>
-
-            {specialPriceSuccess && (
-              <div className="p-3 rounded-2xl bg-sage/15 border border-sage/30 text-sage text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200">
-                <Check size={15} /> {specialPriceSuccess}
-              </div>
-            )}
 
             {/* FORMULARIO PARA COLOCARLE UN PRECIO ESPECIAL */}
             {showAddSpecialPriceForm && (
@@ -704,6 +692,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                             type="button"
                             onClick={() => {
                               onDeleteSpecialPrice(sp.id);
+                              toast.info('Tarifa especial eliminada.');
                             }}
                             className="p-2 text-on-surface-variant/40 hover:text-terracotta hover:bg-terracotta/10 rounded-full transition-colors cursor-pointer"
                             title="Eliminar tarifa especial"
@@ -1164,11 +1153,13 @@ export const Clientas: React.FC<ClientasProps> = ({
                 onClick={() => {
                   if (onDeleteClient && clientToDelete) {
                     const idToDelete = clientToDelete.id;
+                    const clientName = clientToDelete.name;
                     onDeleteClient(idToDelete);
                     if (selectedClientId === idToDelete) {
                       setSelectedClientId(null);
                     }
                     setClientToDelete(null);
+                    toast.info(`Ficha de "${clientName}" eliminada.`);
                   }
                 }}
                 className="py-2.5 px-4 rounded-xl bg-terracotta text-white text-xs font-bold hover:bg-terracotta/90 transition-all shadow-xs cursor-pointer"

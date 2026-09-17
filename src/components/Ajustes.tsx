@@ -8,6 +8,7 @@ import { compressImage } from '../utils/imageCompressor';
 import { saveImageToIndexedDB } from '../utils/indexedDb';
 import { formatMoney } from '../utils/formatters';
 import { Modal } from './Modal';
+import { useToast } from './Toast';
 
 interface AjustesProps {
   priceChanges: PriceChangeEvent[];
@@ -36,6 +37,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
   onUpdateAdminProfile,
   onRestoreBackup
 }) => {
+  const toast = useToast();
   const [newCat, setNewCat] = useState('');
   const [newMethod, setNewMethod] = useState('');
   const [catError, setCatError] = useState('');
@@ -71,10 +73,12 @@ export const Ajustes: React.FC<AjustesProps> = ({
     if (!newPin.trim()) return;
     if (newPin.length < 4) {
       setPinMessage({ text: 'El nuevo PIN debe tener al menos 4 dígitos.', type: 'error' });
+      toast.error('El nuevo PIN debe tener al menos 4 dígitos.');
       return;
     }
     if (newPin !== confirmPin) {
       setPinMessage({ text: 'La confirmación del PIN no coincide.', type: 'error' });
+      toast.error('La confirmación del PIN no coincide.');
       return;
     }
 
@@ -92,6 +96,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
       const currentHash = await hashPin(currentPin.trim(), salt);
       if (currentHash !== storedHash) {
         setPinMessage({ text: 'El PIN actual ingresado es incorrecto.', type: 'error' });
+        toast.error('El PIN actual ingresado es incorrecto.');
         return;
       }
 
@@ -104,9 +109,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
       setNewPin('');
       setConfirmPin('');
       setPinMessage({ text: '¡PIN de acceso actualizado con éxito!', type: 'success' });
+      toast.success('¡PIN de acceso actualizado con éxito!');
       setTimeout(() => setPinMessage(null), 4000);
     } catch {
       setPinMessage({ text: 'Error procesando el cambio de PIN.', type: 'error' });
+      toast.error('Error procesando el cambio de PIN.');
     }
   };
 
@@ -114,6 +121,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
     setTimeoutMinutes(minutes);
     safeSetItem('bs_auth_timeout_mins', minutes.toString());
     setTimeoutSaved(true);
+    toast.success(`Tiempo de bloqueo fijado en ${minutes} min.`);
     setTimeout(() => setTimeoutSaved(false), 2500);
   };
 
@@ -123,10 +131,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
     try {
       await downloadBackupFile();
       setExportSuccess(true);
+      toast.success('¡Respaldo JSON descargado con éxito!');
       setTimeout(() => setExportSuccess(false), 4000);
     } catch (err) {
       console.error(err);
-      alert('Error generando el respaldo de datos.');
+      toast.error('Error generando el respaldo de datos.');
     } finally {
       setIsExporting(false);
     }
@@ -146,14 +155,19 @@ export const Ajustes: React.FC<AjustesProps> = ({
         const validation = validateBackupJson(content);
         if (validation.valid && validation.backupData) {
           setRestoreCandidate(validation.backupData);
+          toast.info('Archivo de respaldo verificado. Confirma la restauración.');
         } else {
-          setRestoreError(validation.error || 'El archivo seleccionado no es un respaldo válido.');
+          const errMsg = validation.error || 'El archivo seleccionado no es un respaldo válido.';
+          setRestoreError(errMsg);
+          toast.error(errMsg);
           setRestoreCandidate(null);
         }
       }
     };
     reader.onerror = () => {
-      setRestoreError('Error al leer el archivo de respaldo del disco.');
+      const errMsg = 'Error al leer el archivo de respaldo del disco.';
+      setRestoreError(errMsg);
+      toast.error(errMsg);
     };
     reader.readAsText(file);
     // Reset file input so user can choose again if needed
@@ -168,11 +182,14 @@ export const Ajustes: React.FC<AjustesProps> = ({
         onRestoreBackup(restoreCandidate);
       }
       setRestoreSuccess(true);
+      toast.success('¡Base de datos restaurada correctamente!');
       setRestoreCandidate(null);
       setStorageMetrics(getStorageMetrics());
       setTimeout(() => setRestoreSuccess(false), 5000);
     } catch (err: any) {
-      setRestoreError(`Error aplicando la restauración: ${err?.message || 'Error desconocido'}`);
+      const errMsg = `Error aplicando la restauración: ${err?.message || 'Error desconocido'}`;
+      setRestoreError(errMsg);
+      toast.error(errMsg);
     }
   };
 
@@ -203,6 +220,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
       photoUrl: targetPhotoRef
     });
     setProfileSuccess(true);
+    toast.success('¡Perfil guardado con éxito!');
     setTimeout(() => setProfileSuccess(false), 3000);
   };
 
@@ -227,14 +245,17 @@ export const Ajustes: React.FC<AjustesProps> = ({
 
   const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCat.trim()) return;
-    if (categories.includes(newCat.trim())) {
+    const trimmed = newCat.trim();
+    if (!trimmed) return;
+    if (categories.includes(trimmed)) {
       setCatError('La categoría ya existe.');
+      toast.warning('La categoría ya existe.');
       return;
     }
-    onAddCategory(newCat.trim());
+    onAddCategory(trimmed);
     setNewCat('');
     setCatError('');
+    toast.success(`Categoría "${trimmed}" agregada.`);
   };
 
   const handleAddMethod = (e: React.FormEvent) => {
@@ -243,11 +264,13 @@ export const Ajustes: React.FC<AjustesProps> = ({
     const normalized = newMethod.trim().toUpperCase();
     if (paymentMethods.includes(normalized)) {
       setMethodError('El método de pago ya existe.');
+      toast.warning('El método de pago ya existe.');
       return;
     }
     onAddPaymentMethod(normalized);
     setNewMethod('');
     setMethodError('');
+    toast.success(`Método "${normalized}" agregado.`);
   };
 
   return (
@@ -357,7 +380,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                 className={`p-2.5 rounded-xl text-xs flex items-center gap-2 font-medium ${
                   pinMessage.type === 'success'
                     ? 'bg-sage/10 text-sage border border-sage/20'
-                    : 'bg-red-500/10 text-red-700 border border-red-500/20'
+                    : 'bg-terracotta/10 text-terracotta border border-terracotta/20'
                 }`}
               >
                 {pinMessage.type === 'success' ? <CheckCircle2 size={14} /> : <ShieldAlert size={14} />}
@@ -497,7 +520,10 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   <div key={cat} className="flex items-center justify-between py-2 px-3 bg-surface-container/30 border border-outline-variant/10 rounded-xl text-xs font-semibold">
                     <span className="text-on-surface-variant">{cat}</span>
                     <button
-                      onClick={() => onDeleteCategory(cat)}
+                      onClick={() => {
+                        onDeleteCategory(cat);
+                        toast.info(`Categoría "${cat}" eliminada.`);
+                      }}
                       className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer"
                     >
                       <Trash2 size={12} />
@@ -542,7 +568,10 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   <div key={method} className="flex items-center justify-between py-2 px-3 bg-surface-container/30 border border-outline-variant/10 rounded-xl text-xs font-bold uppercase tracking-wider text-on-surface">
                     <span>{method}</span>
                     <button
-                      onClick={() => onDeletePaymentMethod(method)}
+                      onClick={() => {
+                        onDeletePaymentMethod(method);
+                        toast.info(`Método "${method}" eliminado.`);
+                      }}
                       className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer"
                     >
                       <Trash2 size={12} />
@@ -640,7 +669,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                 <div
                   className={`h-full transition-all duration-500 rounded-full ${
                     storageMetrics.percentageOf5Mb > 75
-                      ? 'bg-red-500'
+                      ? 'bg-terracotta'
                       : storageMetrics.percentageOf5Mb > 40
                       ? 'bg-amber-500'
                       : 'bg-primary'
@@ -690,7 +719,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
 
             {/* Restore Error Notification */}
             {restoreError && (
-              <div className="p-2.5 bg-red-500/10 text-red-700 border border-red-500/20 rounded-xl text-xs flex items-center gap-2 font-medium">
+              <div className="p-2.5 bg-terracotta/10 text-terracotta border border-terracotta/20 rounded-xl text-xs flex items-center gap-2 font-medium">
                 <AlertCircle size={14} className="shrink-0" /> {restoreError}
               </div>
             )}
