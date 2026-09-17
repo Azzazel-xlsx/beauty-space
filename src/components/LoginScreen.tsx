@@ -6,6 +6,12 @@ import { AdminProfile } from '../types';
 import loginBrandBgAsset from '../assets/images/beauty_space_editorial_1789497481351.jpg';
 
 /**
+ * PIN por defecto utilizado únicamente en el primer arranque si no existe un hash previo.
+ * TODO: reemplazar por flujo de configuración inicial antes de producción
+ */
+export const DEFAULT_FIRST_RUN_PIN = '1234';
+
+/**
  * Imagen de fondo para el panel de marca en la pantalla de login.
  * Puede ser reemplazada por el asset definitivo en cualquier momento.
  */
@@ -102,10 +108,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
       let salt = localStorage.getItem('bs_auth_salt');
       let storedHash = localStorage.getItem('bs_auth_hash');
 
-      // Inicializar PIN por defecto ("1234") si aún no existe
+      // Inicializar PIN por defecto si aún no existe
       if (!salt || !storedHash) {
         salt = generateSalt();
-        storedHash = await hashPin('1234', salt);
+        storedHash = await hashPin(DEFAULT_FIRST_RUN_PIN, salt);
         localStorage.setItem('bs_auth_salt', salt);
         localStorage.setItem('bs_auth_hash', storedHash);
       }

@@ -14,14 +14,7 @@ import { applyRestoreBackup, CompleteBackupData } from './utils/backup';
 import { generateId } from './utils/id';
 import { safeGetJson, safeSetJson, safeRemoveItem } from './utils/storage';
 import { getImageFromIndexedDB, saveImageToIndexedDB } from './utils/indexedDb';
-import {
-  SEED_CLIENTS,
-  SEED_SERVICES,
-  SEED_SPECIAL_PRICES,
-  SEED_APPOINTMENTS,
-  SEED_FINANCIALS,
-  SEED_EXTRAS
-} from './data';
+import { loadDemoData } from './data/demoData';
 
 export default function App() {
   const toast = useToast();
@@ -43,19 +36,19 @@ export default function App() {
   const [storageErrorBanner, setStorageErrorBanner] = useState<string | null>(null);
   const lastActiveRef = useRef<number>(Date.now());
 
-  // Core Persistent States backed by Safe Storage
-  const [clients, setClients] = useState<Client[]>(() => safeGetJson('bs_clients', SEED_CLIENTS));
+  // Core Persistent States backed by Safe Storage (limpio por defecto sin datos semilla)
+  const [clients, setClients] = useState<Client[]>(() => safeGetJson('bs_clients', []));
 
-  const [services, setServices] = useState<Service[]>(() => safeGetJson('bs_services', SEED_SERVICES));
+  const [services, setServices] = useState<Service[]>(() => safeGetJson('bs_services', []));
 
-  const [extras, setExtras] = useState<Extra[]>(() => safeGetJson('bs_extras', SEED_EXTRAS));
+  const [extras, setExtras] = useState<Extra[]>(() => safeGetJson('bs_extras', []));
 
-  const [specialPrices, setSpecialPrices] = useState<SpecialPrice[]>(() => safeGetJson('bs_special_prices', SEED_SPECIAL_PRICES));
+  const [specialPrices, setSpecialPrices] = useState<SpecialPrice[]>(() => safeGetJson('bs_special_prices', []));
 
-  const [appointments, setAppointments] = useState<Appointment[]>(() => safeGetJson('bs_appointments', SEED_APPOINTMENTS));
+  const [appointments, setAppointments] = useState<Appointment[]>(() => safeGetJson('bs_appointments', []));
 
   const [movements, setMovements] = useState<FinancialMovement[]>(() => {
-    const raw = safeGetJson('bs_movements', SEED_FINANCIALS);
+    const raw = safeGetJson('bs_movements', []);
     const seen = new Set<string>();
     return raw.filter((m: FinancialMovement) => {
       if (!m.id || seen.has(m.id)) {
@@ -75,9 +68,10 @@ export default function App() {
   // Configurable Payment Methods state
   const [paymentMethods, setPaymentMethods] = useState<string[]>(() => safeGetJson('bs_payment_methods', ['TRANSFERENCIA', 'EFECTIVO', 'TARJETA']));
 
+  // Perfil de administración con valores genéricos neutros (sin URLs externas fijas)
   const [adminProfile, setAdminProfile] = useState<{ name: string; photoUrl: string }>(() => safeGetJson('bs_admin_profile', {
-    name: 'Juliana castro',
-    photoUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
+    name: 'Administradora',
+    photoUrl: ''
   }));
 
   const [resolvedAdminPhoto, setResolvedAdminPhoto] = useState<string | null>(null);
@@ -562,24 +556,32 @@ export default function App() {
     setPaymentMethods((prev) => prev.filter((m) => m !== method));
   };
 
+  /**
+   * Decisión arquitectónica adoptada: Opción (a) - Restablecer a vacío.
+   * La función de restablecimiento borra todos los registros y deja la base en un estado limpio ([]),
+   * eliminando cualquier dato ficticio. Si un desarrollador desea cargar datos de prueba en local,
+   * puede invocar explícitamente `loadDemoData()` desde `src/data/demoData.ts`.
+   */
   const handleResetDatabase = () => {
-    // Clear state
-    setClients(SEED_CLIENTS);
-    setServices(SEED_SERVICES);
-    setSpecialPrices(SEED_SPECIAL_PRICES);
-    setAppointments(SEED_APPOINTMENTS);
-    setMovements(SEED_FINANCIALS);
+    // Restablecer colecciones a estado limpio vacío
+    setClients([]);
+    setServices([]);
+    setExtras([]);
+    setSpecialPrices([]);
+    setAppointments([]);
+    setMovements([]);
     setPriceChanges([]);
     setCategories(['Suministros & Esmaltes', 'Mantenimiento Equipo', 'Publicidad & RRSS', 'Alquiler & Expensas', 'Insumos Descartables']);
     setPaymentMethods(['TRANSFERENCIA', 'EFECTIVO', 'TARJETA']);
     setAdminProfile({
-      name: 'Valentina Moretti',
-      photoUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
+      name: 'Administradora',
+      photoUrl: ''
     });
 
-    // Wipe storage safely
+    // Limpiar almacenamiento persistente local
     safeRemoveItem('bs_clients');
     safeRemoveItem('bs_services');
+    safeRemoveItem('bs_extras');
     safeRemoveItem('bs_special_prices');
     safeRemoveItem('bs_appointments');
     safeRemoveItem('bs_movements');
@@ -588,7 +590,7 @@ export default function App() {
     safeRemoveItem('bs_payment_methods');
     safeRemoveItem('bs_admin_profile');
 
-    toast.success('¡Base de datos restablecida correctamente a sus valores predeterminados!');
+    toast.success('¡Base de datos restablecida a estado limpio correctamente!');
   };
 
   const handleRestoreBackup = async (backup: CompleteBackupData) => {

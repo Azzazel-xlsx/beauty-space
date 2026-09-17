@@ -2,6 +2,23 @@
  * IndexedDB storage utility for Beauty Space
  * Used for storing high-resolution image blobs and photography evidence
  * preventing localStorage quota exhaustion (5MB limit).
+ * 
+ * ---------------------------------------------------------------------------
+ * PLAN TÉCNICO DE MIGRACIÓN A SUPABASE STORAGE (FUTURA FASE):
+ * ---------------------------------------------------------------------------
+ * Actualmente, las fotos de clientas y avatar de admin se guardan localmente
+ * como DataURLs en IndexedDB (y transitoriamente en localStorage si falla).
+ * 
+ * Durante la fase de migración a Supabase:
+ * 1. Crear un Bucket público o semi-privado en Supabase Storage (ej. `salon-media` o `avatars`).
+ * 2. Convertir los blobs/DataURLs a File/Blob y subirlos mediante:
+ *      `supabase.storage.from('salon-media').upload(`${path}/${id}.webp`, blob, { upsert: true })`
+ * 3. Obtener la URL pública persistente:
+ *      `const { data } = supabase.storage.from('salon-media').getPublicUrl(path);`
+ * 4. Almacenar exclusivamente dicha URL como cadena (`photo_url text`) en las tablas
+ *    de PostgreSQL (`clients`, `admin_profile`), eliminando la necesidad de persistir
+ *    pesados strings base64 o depender de IndexedDB del navegador.
+ * ---------------------------------------------------------------------------
  */
 
 const DB_NAME = 'beauty_space_storage';
