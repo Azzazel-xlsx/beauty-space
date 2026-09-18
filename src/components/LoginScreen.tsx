@@ -1,21 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Eye, EyeOff, ArrowRight, Loader2, User, Mail } from 'lucide-react';
-import { hashPin, generateSalt } from '../utils/crypto';
 import { AdminProfile } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import loginBrandBgAsset from '../assets/images/beauty_space_editorial_1789497481351.jpg';
-
-/**
- * PIN por defecto reservado para la funcionalidad de bloqueo rápido de pantalla (Screen Lock).
- * Se conserva exportado para compatibilidad con el plan de migración (supabase/NOTES.md).
- */
-export const DEFAULT_FIRST_RUN_PIN = '1234';
-
-/**
- * Utilidades criptográficas conservadas para el bloqueo de pantalla sobre sesión activa.
- */
-export { hashPin, generateSalt };
 
 /**
  * Imagen de fondo para el panel de marca en la pantalla de login.

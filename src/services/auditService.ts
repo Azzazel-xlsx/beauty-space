@@ -1,37 +1,57 @@
+import { supabase } from '../lib/supabaseClient';
 import { PriceChangeEvent } from '../types';
-import { safeGetJson, safeSetJson } from '../utils/storage';
-import { generateId } from '../utils/id';
+import { isValidUUID } from '../utils/uuid';
 
-const STORAGE_KEY = 'bs_price_changes';
+const mapRow = (row: any): PriceChangeEvent => ({
+  id: row.id,
+  type: row.type as 'catalog' | 'special',
+  targetId: row.target_id,
+  name: row.name,
+  oldPrice: Number(row.old_price),
+  newPrice: Number(row.new_price),
+  date: row.date,
+  user: row.changed_by ?? 'Administradora',
+  reason: row.reason ?? '',
+});
 
-/**
- * Servicio de Auditoría de Precios (Capa de abstracción de datos)
- * 
- * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
- * por inserciones y consultas directas:
- * - getPriceChanges()   -> supabase.from('price_change_events').select('*').order('date', { ascending: false })
- * - recordPriceChange() -> supabase.from('price_change_events').insert(row).select().single()
- */
 export const auditService = {
   async getPriceChanges(): Promise<PriceChangeEvent[]> {
-    return safeGetJson<PriceChangeEvent[]>(STORAGE_KEY, []);
-  },
-
-  async savePriceChanges(events: PriceChangeEvent[]): Promise<void> {
-    safeSetJson(STORAGE_KEY, events);
+    const { data, error } = await supabase
+      .from('price_change_events')
+      .select('*')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(mapRow);
   },
 
   async recordPriceChange(
-    eventData: Omit<PriceChangeEvent, 'id' | 'date'> & { date?: string }
+    eventData: Omit<PriceChangeEvent, 'id' | 'date'> & { date?: string; id?: string }
   ): Promise<PriceChangeEvent> {
-    const events = await this.getPriceChanges();
-    const newEvent: PriceChangeEvent = {
-      ...eventData,
-      id: generateId('audit'),
+    const targetId = isValidUUID(eventData.targetId)
+      ? eventData.targetId
+      : '00000000-0000-0000-0000-000000000000';
+
+    const payload: Record<string, any> = {
+      type: eventData.type,
+      target_id: targetId,
+      name: eventData.name,
+      old_price: eventData.oldPrice,
+      new_price: eventData.newPrice,
       date: eventData.date || new Date().toISOString().split('T')[0],
+      changed_by: eventData.user || 'Administradora',
+      reason: eventData.reason || '',
     };
-    events.unshift(newEvent);
-    await this.savePriceChanges(events);
-    return newEvent;
+    if (eventData.id && isValidUUID(eventData.id)) {
+      payload.id = eventData.id;
+    }
+
+    const { data, error } = await supabase
+      .from('price_change_events')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapRow(data);
   },
 };

@@ -1,156 +1,171 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
-import { Servicios } from './components/Servicios';
 import { Agenda } from './components/Agenda';
 import { Clientas } from './components/Clientas';
+import { Servicios } from './components/Servicios';
 import { Ajustes } from './components/Ajustes';
-import { LoginScreen } from './components/LoginScreen';
+import { LoginScreen, BrandFloralEmblem } from './components/LoginScreen';
 import { useToast } from './components/Toast';
-import { Clock, AlertTriangle } from 'lucide-react';
-
-import { Client, Service, Appointment, FinancialMovement, SpecialPrice, PriceChangeEvent, AdminProfile, Extra, AppointmentExtra } from './types';
-import { applyRestoreBackup, CompleteBackupData } from './utils/backup';
-import { generateId } from './utils/id';
-import { safeGetJson, safeSetJson, safeRemoveItem } from './utils/storage';
-import { loadDemoData } from './data/demoData';
+import {
+  Client,
+  Service,
+  Extra,
+  SpecialPrice,
+  Appointment,
+  FinancialMovement,
+  PriceChangeEvent,
+  AppointmentExtra,
+  AdminProfile
+} from './types';
+import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
+import { clientsService } from './services/clientsService';
+import { servicesService } from './services/servicesService';
+import { extrasService } from './services/extrasService';
+import { specialPricesService } from './services/specialPricesService';
+import { appointmentsService } from './services/appointmentsService';
+import { financialsService } from './services/financialsService';
+import { auditService } from './services/auditService';
+import { settingsService } from './services/settingsService';
+import { CompleteBackupData } from './utils/backup';
+import { Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState('finanzas');
 
-  // Authentication & Session Guard (OWASP Broken Access Control transient protection)
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      const session = sessionStorage.getItem('bs_auth_session') || localStorage.getItem('bs_auth_session');
-      if (!session) return false;
-      const parsed = JSON.parse(session);
-      return Boolean(parsed?.isAuthenticated);
-    } catch {
-      return false;
-    }
-  });
+  // Supabase Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
+  // Inactivity timeout warning
   const [inactivityWarning, setInactivityWarning] = useState<boolean>(false);
-  const [storageErrorBanner, setStorageErrorBanner] = useState<string | null>(null);
   const lastActiveRef = useRef<number>(Date.now());
 
-  // Core Persistent States backed by Safe Storage (limpio por defecto sin datos semilla)
-  const [clients, setClients] = useState<Client[]>(() => safeGetJson('bs_clients', []));
+  // Business Data State (loaded asynchronously from Supabase)
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(false);
+  const [dataError, setDataError] = useState<string | null>(null);
 
-  const [services, setServices] = useState<Service[]>(() => safeGetJson('bs_services', []));
-
-  const [extras, setExtras] = useState<Extra[]>(() => safeGetJson('bs_extras', []));
-
-  const [specialPrices, setSpecialPrices] = useState<SpecialPrice[]>(() => safeGetJson('bs_special_prices', []));
-
-  const [appointments, setAppointments] = useState<Appointment[]>(() => safeGetJson('bs_appointments', []));
-
-  const [movements, setMovements] = useState<FinancialMovement[]>(() => {
-    const raw = safeGetJson('bs_movements', []);
-    const seen = new Set<string>();
-    return raw.filter((m: FinancialMovement) => {
-      if (!m.id || seen.has(m.id)) {
-        return false;
-      }
-      seen.add(m.id);
-      return true;
-    });
+  const [clients, setClients] = useState<Client[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [extras, setExtras] = useState<Extra[]>([]);
+  const [specialPrices, setSpecialPrices] = useState<SpecialPrice[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [movements, setMovements] = useState<FinancialMovement[]>([]);
+  const [priceChanges, setPriceChanges] = useState<PriceChangeEvent[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const [adminProfile, setAdminProfile] = useState<AdminProfile>({
+    name: 'Valentina Moretti',
+    photoUrl: ''
   });
 
-  // Price change audit log state
-  const [priceChanges, setPriceChanges] = useState<PriceChangeEvent[]>(() => safeGetJson('bs_price_changes', []));
-
-  // Configurable Categories state
-  const [categories, setCategories] = useState<string[]>(() => safeGetJson('bs_categories', ['Suministros & Esmaltes', 'Mantenimiento Equipo', 'Publicidad & RRSS', 'Alquiler & Expensas', 'Insumos Descartables']));
-
-  // Configurable Payment Methods state
-  const [paymentMethods, setPaymentMethods] = useState<string[]>(() => safeGetJson('bs_payment_methods', ['TRANSFERENCIA', 'EFECTIVO', 'TARJETA']));
-
-  // Perfil de administración con valores genéricos neutros (sin URLs externas fijas)
-  const [adminProfile, setAdminProfile] = useState<{ name: string; photoUrl: string }>(() => safeGetJson('bs_admin_profile', {
-    name: 'Administradora',
-    photoUrl: ''
-  }));
-
-  const handleUpdateAdminProfile = (newProfile: { name: string; photoUrl: string }) => {
-    setAdminProfile(newProfile);
-  };
-
-  const effectiveAdminProfile = {
-    name: adminProfile.name,
-    photoUrl: (adminProfile.photoUrl && !adminProfile.photoUrl.startsWith('indexeddb:'))
-      ? adminProfile.photoUrl
-      : 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
-  };
-
-  // Sync states safely back to storage with error handling
+  // Check Supabase session on mount & subscribe to auth changes
   useEffect(() => {
-    const res = safeSetJson('bs_clients', clients);
-    if (!res.success && res.isQuotaExceeded) {
-      setStorageErrorBanner('Límite de almacenamiento alcanzado. Descarga un Respaldo JSON desde Ajustes para no perder datos.');
+    let isMounted = true;
+
+    if (!isSupabaseConfigured()) {
+      setIsAuthChecking(false);
+      setIsAuthenticated(false);
+      return;
     }
-  }, [clients]);
 
-  useEffect(() => {
-    const res = safeSetJson('bs_services', services);
-    if (!res.success && res.isQuotaExceeded) {
-      setStorageErrorBanner('Límite de almacenamiento alcanzado. Descarga un Respaldo JSON desde Ajustes.');
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (isMounted) {
+        setIsAuthenticated(Boolean(session?.user));
+        setIsAuthChecking(false);
+      }
+    }).catch((err) => {
+      console.error('Error verificando sesión de Supabase:', err);
+      if (isMounted) {
+        setIsAuthenticated(false);
+        setIsAuthChecking(false);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (isMounted) {
+        setIsAuthenticated(Boolean(session?.user));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Fetch all business collections from Supabase
+  const loadAllData = useCallback(async () => {
+    if (!isSupabaseConfigured()) return;
+
+    setIsLoadingData(true);
+    setDataError(null);
+
+    try {
+      const [
+        cList,
+        sList,
+        eList,
+        spList,
+        aList,
+        mList,
+        pcList,
+        catList,
+        pmList,
+        profile
+      ] = await Promise.all([
+        clientsService.getClients(),
+        servicesService.getServices(),
+        extrasService.getExtras(),
+        specialPricesService.getSpecialPrices(),
+        appointmentsService.getAppointments(),
+        financialsService.getMovements(),
+        auditService.getPriceChanges(),
+        settingsService.getCategories(),
+        settingsService.getPaymentMethods(),
+        settingsService.getAdminProfile()
+      ]);
+
+      setClients(cList);
+      setServices(sList);
+      setExtras(eList);
+      setSpecialPrices(spList);
+      setAppointments(aList);
+      setMovements(mList);
+      setPriceChanges(pcList);
+      setCategories(catList);
+      setPaymentMethods(pmList);
+      setAdminProfile(profile);
+    } catch (err: any) {
+      console.error('Error cargando datos de Supabase:', err);
+      setDataError(err?.message || 'Error al conectar con la base de datos de Supabase.');
+      toast.error('Error al sincronizar datos con Supabase.');
+    } finally {
+      setIsLoadingData(false);
     }
-  }, [services]);
+  }, [toast]);
 
+  // Load data as soon as authenticated
   useEffect(() => {
-    safeSetJson('bs_extras', extras);
-  }, [extras]);
-
-  useEffect(() => {
-    const res = safeSetJson('bs_special_prices', specialPrices);
-    if (!res.success && res.isQuotaExceeded) {
-      setStorageErrorBanner('Límite de almacenamiento alcanzado.');
+    if (isAuthenticated) {
+      loadAllData();
     }
-  }, [specialPrices]);
+  }, [isAuthenticated, loadAllData]);
 
-  useEffect(() => {
-    const res = safeSetJson('bs_appointments', appointments);
-    if (!res.success && res.isQuotaExceeded) {
-      setStorageErrorBanner('Límite de almacenamiento alcanzado.');
-    }
-  }, [appointments]);
-
-  useEffect(() => {
-    const res = safeSetJson('bs_movements', movements);
-    if (!res.success && res.isQuotaExceeded) {
-      setStorageErrorBanner('Límite de almacenamiento alcanzado.');
-    }
-  }, [movements]);
-
-  useEffect(() => {
-    const res = safeSetJson('bs_price_changes', priceChanges);
-    if (!res.success && res.isQuotaExceeded) {
-      setStorageErrorBanner('Límite de almacenamiento alcanzado.');
-    }
-  }, [priceChanges]);
-
-  useEffect(() => {
-    safeSetJson('bs_categories', categories);
-  }, [categories]);
-
-  useEffect(() => {
-    safeSetJson('bs_payment_methods', paymentMethods);
-  }, [paymentMethods]);
-
-  useEffect(() => {
-    safeSetJson('bs_admin_profile', adminProfile);
-  }, [adminProfile]);
-
-  // Inactivity detection & automatic session timeout
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const getTimeoutMinutes = () => {
+  // Read timeout preference stored per device
+  const getTimeoutMinutes = (): number => {
+    try {
       const saved = localStorage.getItem('bs_auth_timeout_mins');
       return saved !== null ? Number(saved) : 15;
-    };
+    } catch {
+      return 15;
+    }
+  };
+
+  // Activity tracker & auto-lock by inactivity
+  useEffect(() => {
+    if (!isAuthenticated) return;
 
     const handleUserActivity = () => {
       lastActiveRef.current = Date.now();
@@ -189,195 +204,244 @@ export default function App() {
   }, [isAuthenticated, inactivityWarning]);
 
   const handleLoginSuccess = () => {
-    const sessionData = {
-      isAuthenticated: true,
-      authenticatedAt: Date.now(),
-      lastActiveAt: Date.now(),
-    };
-    sessionStorage.setItem('bs_auth_session', JSON.stringify(sessionData));
-    localStorage.setItem('bs_auth_session', JSON.stringify(sessionData));
     lastActiveRef.current = Date.now();
     setInactivityWarning(false);
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('bs_auth_session');
-    localStorage.removeItem('bs_auth_session');
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error(err);
+    }
     setInactivityWarning(false);
     setIsAuthenticated(false);
   };
 
-
   // ==================== WORKFLOW: CLIENTS ====================
-  const handleAddClient = (newCli: Omit<Client, 'id' | 'createdAt'> & { id?: string }) => {
-    const client: Client = {
-      ...newCli,
-      id: newCli.id || generateId('client'),
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-    setClients((prev) => [...prev, client]);
+  const handleAddClient = async (newCli: Omit<Client, 'id' | 'createdAt'> & { id?: string }) => {
+    try {
+      const created = await clientsService.createClient(newCli);
+      setClients((prev) => [created, ...prev]);
+      toast.success(`Clienta ${created.name} registrada con éxito.`);
+    } catch (err: any) {
+      console.error('Error registrando clienta:', err);
+      toast.error(`Error al registrar clienta: ${err?.message}`);
+    }
   };
 
-  const handleUpdateClientNotes = (clientId: string, notes: string) => {
-    setClients((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, notes } : c))
-    );
+  const handleUpdateClientNotes = async (clientId: string, notes: string) => {
+    try {
+      const updated = await clientsService.updateClient(clientId, { notes });
+      setClients((prev) => prev.map((c) => (c.id === clientId ? updated : c)));
+      toast.success('Notas de la clienta actualizadas.');
+    } catch (err: any) {
+      console.error('Error actualizando notas:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleUpdateClientPhoto = (clientId: string, photoUrl: string) => {
-    setClients((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, photoUrl } : c))
-    );
+  const handleUpdateClientPhoto = async (clientId: string, photoUrl: string) => {
+    try {
+      const updated = await clientsService.updateClient(clientId, { photoUrl });
+      setClients((prev) => prev.map((c) => (c.id === clientId ? updated : c)));
+      toast.success('Foto de la clienta actualizada.');
+    } catch (err: any) {
+      console.error('Error actualizando foto:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleDeleteClient = (clientId: string) => {
-    setClients((prev) => prev.filter((c) => c.id !== clientId));
-    // Clean up associated special preferential prices
-    setSpecialPrices((prev) => prev.filter((sp) => sp.clientId !== clientId));
+  const handleDeleteClient = async (clientId: string) => {
+    try {
+      await clientsService.deleteClient(clientId);
+      setClients((prev) => prev.filter((c) => c.id !== clientId));
+      setSpecialPrices((prev) => prev.filter((sp) => sp.clientId !== clientId));
+      toast.success('Clienta eliminada correctamente.');
+    } catch (err: any) {
+      console.error('Error eliminando clienta:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
-
 
   // ==================== WORKFLOW: SERVICES ====================
-  const handleAddService = (newSrv: Omit<Service, 'id' | 'priceHistory'> & { initialPrice: number }) => {
-    const service: Service = {
-      id: generateId('service'),
-      name: newSrv.name,
-      description: newSrv.description,
-      basePrice: newSrv.initialPrice,
-      duration: newSrv.duration,
-      priceHistory: [
-        { date: new Date().toISOString().split('T')[0], price: newSrv.initialPrice, reason: 'Tarifa de apertura de catálogo.' }
-      ]
-    };
-    setServices((prev) => [...prev, service]);
+  const handleAddService = async (newSrv: Omit<Service, 'id' | 'priceHistory'> & { initialPrice: number }) => {
+    try {
+      const created = await servicesService.createService({
+        name: newSrv.name,
+        description: newSrv.description,
+        basePrice: newSrv.initialPrice,
+        duration: newSrv.duration
+      });
+      setServices((prev) => [...prev, created]);
+      toast.success('Servicio agregado al catálogo.');
+    } catch (err: any) {
+      console.error('Error agregando servicio:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleUpdateServicePrice = (serviceId: string, newPrice: number, date: string, reason?: string) => {
-    let oldPriceVal = 0;
-    let srvName = '';
+  const handleUpdateServicePrice = async (serviceId: string, newPrice: number, date: string, reason?: string) => {
+    const srv = services.find((s) => s.id === serviceId);
+    const oldPriceVal = srv ? srv.basePrice : 0;
+    const srvName = srv ? srv.name : 'Servicio';
 
-    setServices((prev) =>
-      prev.map((s) => {
-        if (s.id === serviceId) {
-          oldPriceVal = s.basePrice;
-          srvName = s.name;
-          return {
-            ...s,
-            basePrice: newPrice,
-            priceHistory: [{ date, price: newPrice, reason: reason || 'Actualización periódica.' }, ...(s.priceHistory || [])]
-          };
-        }
-        return s;
-      })
-    );
+    try {
+      const updatedSrv = await servicesService.updateServicePrice(
+        serviceId,
+        newPrice,
+        date,
+        reason || 'Actualización periódica de tarifas.'
+      );
+      setServices((prev) => prev.map((s) => (s.id === serviceId ? updatedSrv : s)));
 
-    // Append to price changes audit ledger
-    const newAudit: PriceChangeEvent = {
-      id: generateId('audit'),
-      type: 'catalog',
-      targetId: serviceId,
-      name: srvName || 'Servicio',
-      oldPrice: oldPriceVal,
-      newPrice: newPrice,
-      date,
-      user: 'Valentina Moretti (Admin)',
-      reason: reason || 'Reajuste por costes e inflación.'
-    };
-    setPriceChanges((prev) => [newAudit, ...prev]);
+      const auditEvent = await auditService.recordPriceChange({
+        type: 'catalog',
+        targetId: serviceId,
+        name: srvName,
+        oldPrice: oldPriceVal,
+        newPrice,
+        date,
+        user: adminProfile.name || 'Administradora',
+        reason: reason || 'Reajuste por costes e inflación.'
+      });
+      setPriceChanges((prev) => [auditEvent, ...prev]);
+
+      toast.success('Tarifa del servicio actualizada y registrada en auditoría.');
+    } catch (err: any) {
+      console.error('Error actualizando precio:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleDeleteService = (serviceId: string) => {
-    setServices((prev) => prev.filter((s) => s.id !== serviceId));
-    setSpecialPrices((prev) => prev.filter((sp) => sp.serviceId !== serviceId));
+  const handleDeleteService = async (serviceId: string) => {
+    try {
+      await servicesService.deleteService(serviceId);
+      setServices((prev) => prev.filter((s) => s.id !== serviceId));
+      setSpecialPrices((prev) => prev.filter((sp) => sp.serviceId !== serviceId));
+      toast.success('Servicio eliminado.');
+    } catch (err: any) {
+      console.error('Error eliminando servicio:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
   // ==================== WORKFLOW: EXTRAS ====================
-  const handleAddExtra = (newExtra: Omit<Extra, 'id' | 'priceHistory'> & { initialPrice: number }) => {
-    const extra: Extra = {
-      id: generateId('extra'),
-      name: newExtra.name,
-      pricePerNail: newExtra.pricePerNail,
-      serviceId: newExtra.serviceId,
-      priceHistory: [
-        {
-          date: new Date().toISOString().split('T')[0],
-          price: newExtra.initialPrice,
-          reason: 'Tarifa inicial registrada.'
-        }
-      ]
-    };
-    setExtras((prev) => [...prev, extra]);
+  const handleAddExtra = async (newExtra: Omit<Extra, 'id' | 'priceHistory'> & { initialPrice: number }) => {
+    try {
+      const created = await extrasService.createExtra({
+        name: newExtra.name,
+        pricePerNail: newExtra.pricePerNail,
+        serviceId: newExtra.serviceId,
+        initialPrice: newExtra.initialPrice,
+        initialReason: 'Tarifa inicial registrada.'
+      });
+      setExtras((prev) => [...prev, created]);
+      toast.success('Extra agregado al catálogo.');
+    } catch (err: any) {
+      console.error('Error agregando extra:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleUpdateExtraPrice = (extraId: string, newPrice: number, date: string, reason?: string) => {
-    setExtras((prev) =>
-      prev.map((extra) => {
-        if (extra.id === extraId) {
-          return {
-            ...extra,
-            pricePerNail: newPrice,
-            priceHistory: [
-              { date, price: newPrice, reason },
-              ...extra.priceHistory
-            ]
-          };
-        }
-        return extra;
-      })
-    );
+  const handleUpdateExtraPrice = async (extraId: string, newPrice: number, date: string, reason?: string) => {
+    try {
+      const updated = await extrasService.updateExtraPrice(
+        extraId,
+        newPrice,
+        date,
+        reason || 'Actualización periódica.'
+      );
+      setExtras((prev) => prev.map((e) => (e.id === extraId ? updated : e)));
+      toast.success('Precio del extra actualizado.');
+    } catch (err: any) {
+      console.error('Error actualizando extra:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleDeleteExtra = (extraId: string) => {
-    setExtras((prev) => prev.filter((e) => e.id !== extraId));
+  const handleDeleteExtra = async (extraId: string) => {
+    try {
+      await extrasService.deleteExtra(extraId);
+      setExtras((prev) => prev.filter((e) => e.id !== extraId));
+      toast.success('Extra eliminado.');
+    } catch (err: any) {
+      console.error('Error eliminando extra:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
-
 
   // ==================== WORKFLOW: SPECIAL PRICES ====================
-  const handleAddSpecialPrice = (newSp: Omit<SpecialPrice, 'id'>) => {
-    const special: SpecialPrice = {
-      ...newSp,
-      id: generateId('special')
-    };
-    setSpecialPrices((prev) => [...prev, special]);
+  const handleAddSpecialPrice = async (newSp: Omit<SpecialPrice, 'id'>) => {
+    try {
+      const created = await specialPricesService.setSpecialPrice(
+        newSp.clientId,
+        newSp.serviceId,
+        newSp.specialPrice,
+        newSp.groupLabel,
+        newSp.isActive
+      );
+      setSpecialPrices((prev) => {
+        const filtered = prev.filter(
+          (sp) => !(sp.clientId === newSp.clientId && sp.serviceId === newSp.serviceId)
+        );
+        return [...filtered, created];
+      });
+      toast.success('Precio preferencial configurado.');
+    } catch (err: any) {
+      console.error('Error guardando precio preferencial:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleToggleSpecialPriceStatus = (id: string) => {
-    setSpecialPrices((prev) =>
-      prev.map((sp) => (sp.id === id ? { ...sp, isActive: !sp.isActive } : sp))
-    );
+  const handleDeleteSpecialPrice = async (id: string) => {
+    try {
+      await specialPricesService.deleteSpecialPrice(id);
+      setSpecialPrices((prev) => prev.filter((sp) => sp.id !== id));
+      toast.success('Precio preferencial eliminado.');
+    } catch (err: any) {
+      console.error('Error eliminando precio preferencial:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
-
-  const handleDeleteSpecialPrice = (id: string) => {
-    setSpecialPrices((prev) => prev.filter((sp) => sp.id !== id));
-  };
-
 
   // ==================== WORKFLOW: FINANCES ====================
-  const handleAddMovement = (newMov: Omit<FinancialMovement, 'id'>) => {
-    const movement: FinancialMovement = {
-      ...newMov,
-      id: generateId('move')
-    };
-    setMovements((prev) => [movement, ...prev]);
+  const handleAddMovement = async (newMov: Omit<FinancialMovement, 'id'>) => {
+    try {
+      const created = await financialsService.createMovement(newMov);
+      setMovements((prev) => [created, ...prev]);
+      toast.success('Movimiento financiero registrado.');
+    } catch (err: any) {
+      console.error('Error registrando movimiento:', err);
+      toast.error(`Error al registrar movimiento: ${err?.message}`);
+    }
   };
 
-  const handleDeleteMovement = (id: string) => {
-    setMovements((prev) => prev.filter((m) => m.id !== id));
+  const handleDeleteMovement = async (id: string) => {
+    try {
+      await financialsService.deleteMovement(id);
+      setMovements((prev) => prev.filter((m) => m.id !== id));
+      toast.success('Movimiento eliminado.');
+    } catch (err: any) {
+      console.error('Error eliminando movimiento:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
-
 
   // ==================== WORKFLOW: APPOINTMENTS ====================
-  const handleAddAppointment = (newAppt: Omit<Appointment, 'id'> & { id?: string }) => {
-    const appt: Appointment = {
-      ...newAppt,
-      id: newAppt.id || generateId('appt')
-    };
-    setAppointments((prev) => [...prev, appt]);
-    toast.success('Cita agendada con éxito.');
+  const handleAddAppointment = async (newAppt: Omit<Appointment, 'id'> & { id?: string }) => {
+    try {
+      const created = await appointmentsService.createAppointment(newAppt);
+      setAppointments((prev) => [created, ...prev]);
+      toast.success('Cita agendada con éxito.');
+    } catch (err: any) {
+      console.error('Error agendando cita:', err);
+      toast.error(`Error al agendar cita: ${err?.message}`);
+    }
   };
 
-  const handleUpdateAppointmentStatus = (
+  const handleUpdateAppointmentStatus = async (
     id: string,
     status: Appointment['status'],
     cancelReason?: string,
@@ -386,53 +450,51 @@ export default function App() {
     const targetAppt = appointments.find((a) => a.id === id);
     if (!targetAppt) return;
 
-    if (status === 'cancelled') {
-      toast.info('Cita cancelada.');
-    } else if (status === 'reagendada') {
-      toast.info('Cita marcada como reagendada.');
-    }
+    try {
+      if (targetAppt.status !== 'completed' && status === 'completed') {
+        const client = clients.find((c) => c.id === targetAppt.clientId);
+        const service = services.find((s) => s.id === targetAppt.serviceId);
+        
+        const serviceName = service ? service.name : 'Tratamiento';
+        const clientName = client ? client.name : 'Clienta Regular';
 
-    // Side-effects should run outside of pure state setters
-    if (targetAppt.status !== 'completed' && status === 'completed') {
-      const client = clients.find((c) => c.id === targetAppt.clientId);
-      const service = services.find((s) => s.id === targetAppt.serviceId);
-      
-      const serviceName = service ? service.name : 'Tratamiento';
-      const clientName = client ? client.name : 'Clienta Regular';
+        const movement = await financialsService.createMovement({
+          type: 'income',
+          category: serviceName,
+          amount: targetAppt.priceCharged,
+          date: targetAppt.date,
+          description: `Servicio ${serviceName} - ${clientName}`,
+          paymentMethod: 'TRANSFERENCIA',
+          clientName,
+          serviceName,
+          appointmentId: targetAppt.id,
+          costOfSupplies: 150,
+          staffCommission: targetAppt.priceCharged * 0.15
+        });
+        setMovements((prev) => [movement, ...prev]);
+      }
 
-      handleAddMovement({
-        type: 'income',
-        category: serviceName,
-        amount: targetAppt.priceCharged,
-        date: targetAppt.date,
-        description: `Servicio ${serviceName} - ${clientName}`,
-        paymentMethod: 'TRANSFERENCIA',
-        clientName,
-        serviceName,
-        appointmentId: targetAppt.id,
-        costOfSupplies: 150, // Standard template default cost
-        staffCommission: targetAppt.priceCharged * 0.15 // Standard default 15%
+      const updated = await appointmentsService.updateAppointment(id, {
+        status,
+        cancelReason: cancelReason || '',
+        rescheduledToId
       });
-      toast.success('Cita completada y registrada en finanzas.');
-    }
+      setAppointments((prev) => prev.map((a) => (a.id === id ? updated : a)));
 
-    setAppointments((prev) =>
-      prev.map((appt) => {
-        if (appt.id === id) {
-          return {
-            ...appt,
-            status,
-            ...(cancelReason ? { cancelReason } : {}),
-            ...(rescheduledToId ? { rescheduledToId } : {})
-          };
-        }
-        return appt;
-      })
-    );
+      if (status === 'cancelled') {
+        toast.info('Cita cancelada.');
+      } else if (status === 'reagendada') {
+        toast.info('Cita marcada como reagendada.');
+      } else if (status === 'completed') {
+        toast.success('Cita completada y registrada en finanzas.');
+      }
+    } catch (err: any) {
+      console.error('Error actualizando cita:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  // Complete appointment with customized supplies and staff commission (Version 2.0 Real-time economics tracker)
-  const handleCompleteAppointmentAndCharge = (
+  const handleCompleteAppointmentAndCharge = async (
     id: string,
     costOfSupplies: number,
     staffCommissionPercent: number,
@@ -446,143 +508,221 @@ export default function App() {
     
     const serviceName = service ? service.name : 'Tratamiento';
     const clientName = client ? client.name : 'Clienta Regular';
-
     const commissionAmount = parseFloat(((targetAppt.priceCharged * staffCommissionPercent) / 100).toFixed(2));
 
-    // Post transaction to financial accounting cleanly outside state setter
-    handleAddMovement({
-      type: 'income',
-      category: serviceName,
-      amount: targetAppt.priceCharged,
-      date: targetAppt.date,
-      description: `Servicio ${serviceName} - ${clientName} (Cobro real-time)`,
-      paymentMethod: paymentMethod as FinancialMovement['paymentMethod'],
-      clientName,
-      serviceName,
-      appointmentId: targetAppt.id,
-      costOfSupplies,
-      staffCommission: commissionAmount
-    });
+    try {
+      const movement = await financialsService.createMovement({
+        type: 'income',
+        category: serviceName,
+        amount: targetAppt.priceCharged,
+        date: targetAppt.date,
+        description: `Servicio ${serviceName} - ${clientName} (Cobro real-time)`,
+        paymentMethod: paymentMethod as FinancialMovement['paymentMethod'],
+        clientName,
+        serviceName,
+        appointmentId: targetAppt.id,
+        costOfSupplies,
+        staffCommission: commissionAmount
+      });
+      setMovements((prev) => [movement, ...prev]);
 
-    setAppointments((prev) =>
-      prev.map((appt) => {
-        if (appt.id === id) {
-          return { ...appt, status: 'completed' };
-        }
-        return appt;
-      })
-    );
-    toast.success('Cita cobrada y completada exitosamente.');
+      const updatedAppt = await appointmentsService.updateAppointment(id, { status: 'completed' });
+      setAppointments((prev) => prev.map((a) => (a.id === id ? updatedAppt : a)));
+      toast.success('Cita cobrada y completada exitosamente.');
+    } catch (err: any) {
+      console.error('Error al cobrar cita:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleDeleteAppointment = (id: string) => {
-    setAppointments((prev) => prev.filter((appt) => appt.id !== id));
-    toast.info('Cita eliminada de la agenda.');
+  const handleDeleteAppointment = async (id: string) => {
+    try {
+      await appointmentsService.deleteAppointment(id);
+      setAppointments((prev) => prev.filter((appt) => appt.id !== id));
+      toast.info('Cita eliminada de la agenda.');
+    } catch (err: any) {
+      console.error('Error eliminando cita:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleUpdateAppointmentExtras = (
+  const handleUpdateAppointmentExtras = async (
     appointmentId: string,
     updatedExtras: AppointmentExtra[],
     isHomeVisit: boolean,
     homeVisitFee: number,
     newTotal: number
   ) => {
-    setAppointments((prev) =>
-      prev.map((appt) => {
-        if (appt.id === appointmentId) {
-          return {
-            ...appt,
-            extras: updatedExtras,
-            isHomeVisit,
-            homeVisitFee,
-            priceCharged: newTotal
-          };
-        }
-        return appt;
-      })
-    );
-    toast.success('Detalles y extras de la cita actualizados.');
+    try {
+      const updated = await appointmentsService.updateAppointment(appointmentId, {
+        extras: updatedExtras,
+        isHomeVisit,
+        homeVisitFee,
+        priceCharged: newTotal
+      });
+      setAppointments((prev) => prev.map((appt) => (appt.id === appointmentId ? updated : appt)));
+      toast.success('Detalles y extras de la cita actualizados.');
+    } catch (err: any) {
+      console.error('Error actualizando extras:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
-
 
   // ==================== WORKFLOW: SETTINGS & DATABASE MAINTENANCE ====================
-  const handleAddCategory = (category: string) => {
-    setCategories((prev) => [...prev, category]);
+  const handleAddCategory = async (category: string) => {
+    try {
+      await settingsService.addCategory(category);
+      setCategories((prev) => [...prev, category]);
+    } catch (err: any) {
+      console.error('Error agregando categoría:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleDeleteCategory = (category: string) => {
-    setCategories((prev) => prev.filter((c) => c !== category));
+  const handleDeleteCategory = async (category: string) => {
+    try {
+      await settingsService.deleteCategory(category);
+      setCategories((prev) => prev.filter((c) => c !== category));
+    } catch (err: any) {
+      console.error('Error eliminando categoría:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleAddPaymentMethod = (method: string) => {
-    setPaymentMethods((prev) => [...prev, method]);
+  const handleAddPaymentMethod = async (method: string) => {
+    try {
+      await settingsService.addPaymentMethod(method);
+      setPaymentMethods((prev) => [...prev, method]);
+    } catch (err: any) {
+      console.error('Error agregando método de pago:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  const handleDeletePaymentMethod = (method: string) => {
-    setPaymentMethods((prev) => prev.filter((m) => m !== method));
+  const handleDeletePaymentMethod = async (method: string) => {
+    try {
+      await settingsService.deletePaymentMethod(method);
+      setPaymentMethods((prev) => prev.filter((m) => m !== method));
+    } catch (err: any) {
+      console.error('Error eliminando método de pago:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
   };
 
-  /**
-   * Decisión arquitectónica adoptada: Opción (a) - Restablecer a vacío.
-   * La función de restablecimiento borra todos los registros y deja la base en un estado limpio ([]),
-   * eliminando cualquier dato ficticio. Si un desarrollador desea cargar datos de prueba en local,
-   * puede invocar explícitamente `loadDemoData()` desde `src/data/demoData.ts`.
-   */
-  const handleResetDatabase = () => {
-    // Restablecer colecciones a estado limpio vacío
-    setClients([]);
-    setServices([]);
-    setExtras([]);
-    setSpecialPrices([]);
-    setAppointments([]);
-    setMovements([]);
-    setPriceChanges([]);
-    setCategories(['Suministros & Esmaltes', 'Mantenimiento Equipo', 'Publicidad & RRSS', 'Alquiler & Expensas', 'Insumos Descartables']);
-    setPaymentMethods(['TRANSFERENCIA', 'EFECTIVO', 'TARJETA']);
-    setAdminProfile({
-      name: 'Administradora',
-      photoUrl: ''
-    });
+  const handleUpdateAdminProfile = async (profile: { name: string; photoUrl: string }) => {
+    try {
+      await settingsService.saveAdminProfile(profile);
+      setAdminProfile(profile);
+    } catch (err: any) {
+      console.error('Error actualizando perfil:', err);
+      toast.error(`Error: ${err?.message}`);
+    }
+  };
 
-    // Limpiar almacenamiento persistente local
-    safeRemoveItem('bs_clients');
-    safeRemoveItem('bs_services');
-    safeRemoveItem('bs_extras');
-    safeRemoveItem('bs_special_prices');
-    safeRemoveItem('bs_appointments');
-    safeRemoveItem('bs_movements');
-    safeRemoveItem('bs_price_changes');
-    safeRemoveItem('bs_categories');
-    safeRemoveItem('bs_payment_methods');
-    safeRemoveItem('bs_admin_profile');
-
-    toast.success('¡Base de datos restablecida a estado limpio correctamente!');
+  const handleResetDatabase = async () => {
+    try {
+      await Promise.all([
+        supabase.from('appointment_extras').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('appointments').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('financial_movements').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('special_prices').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('extra_price_history').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('extras').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('service_price_history').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('services').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('clients').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase.from('price_change_events').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+      ]);
+      await loadAllData();
+      toast.success('¡Base de datos restablecida a estado limpio correctamente!');
+    } catch (err: any) {
+      console.error('Error al restablecer:', err);
+      toast.error(`Error al restablecer: ${err?.message}`);
+    }
   };
 
   const handleRestoreBackup = async (backup: CompleteBackupData) => {
-    await applyRestoreBackup(backup);
-    const { payload } = backup;
-    setClients(payload.clients);
-    setServices(payload.services);
-    setSpecialPrices(payload.specialPrices);
-    setAppointments(payload.appointments);
-    setMovements(payload.movements);
-    setPriceChanges(payload.priceChanges);
-    setCategories(payload.categories);
-    setPaymentMethods(payload.paymentMethods);
-    if (payload.adminProfile) {
-      setAdminProfile(payload.adminProfile);
+    setIsLoadingData(true);
+    try {
+      const { payload } = backup;
+      for (const c of payload.clients) {
+        await clientsService.createClient(c).catch(() => {});
+      }
+      for (const s of payload.services) {
+        await servicesService.createService(s).catch(() => {});
+      }
+      for (const a of payload.appointments) {
+        await appointmentsService.createAppointment(a).catch(() => {});
+      }
+      for (const m of payload.movements) {
+        await financialsService.createMovement(m).catch(() => {});
+      }
+      await loadAllData();
+      toast.success('¡Copia de seguridad restaurada correctamente en Supabase!');
+    } catch (err: any) {
+      toast.error(`Error al restaurar copia: ${err?.message}`);
+    } finally {
+      setIsLoadingData(false);
     }
-    toast.success('¡Copia de seguridad restaurada correctamente!');
   };
 
+  // Full backup data payload snapshot for JSON export
+  const fullBackupData: CompleteBackupData = useMemo(() => ({
+    schemaVersion: '1.0',
+    exportedAt: new Date().toISOString(),
+    app: 'Beauty Space',
+    summary: {
+      clientsCount: clients.length,
+      appointmentsCount: appointments.length,
+      movementsCount: movements.length,
+      servicesCount: services.length,
+      specialPricesCount: specialPrices.length
+    },
+    payload: {
+      clients,
+      services,
+      specialPrices,
+      appointments,
+      movements,
+      priceChanges,
+      categories,
+      paymentMethods,
+      adminProfile
+    }
+  }), [clients, services, specialPrices, appointments, movements, priceChanges, categories, paymentMethods, adminProfile]);
 
+  // Auth checking indicator
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-[#FAF8F5] flex flex-col items-center justify-center gap-3">
+        <BrandFloralEmblem size={42} className="text-primary animate-pulse" />
+        <p className="text-xs font-serif font-bold text-primary tracking-wide">Cargando Beauty Space...</p>
+      </div>
+    );
+  }
+
+  // If not logged in, render LoginScreen (Email + Password with Supabase Auth)
   if (!isAuthenticated) {
     return (
       <LoginScreen
-        adminProfile={effectiveAdminProfile}
+        adminProfile={adminProfile}
         onLoginSuccess={handleLoginSuccess}
       />
+    );
+  }
+
+  // Loading indicator when fetching data from Supabase
+  if (isLoadingData && clients.length === 0 && services.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#FAF8F5] flex flex-col items-center justify-center gap-4 text-center px-4">
+        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary animate-pulse">
+          <BrandFloralEmblem size={32} />
+        </div>
+        <div className="space-y-1">
+          <h3 className="font-serif text-lg font-bold text-primary">Sincronizando Beauty Space</h3>
+          <p className="text-xs text-on-surface-variant/70">Conectando con la base de datos en la nube...</p>
+        </div>
+      </div>
     );
   }
 
@@ -590,20 +730,20 @@ export default function App() {
     <Layout
       activeTab={activeTab}
       setActiveTab={setActiveTab}
-      adminProfile={effectiveAdminProfile}
+      adminProfile={adminProfile}
       onLogout={handleLogout}
     >
-      {storageErrorBanner && (
+      {dataError && (
         <div className="bg-terracotta/10 border-b border-terracotta/20 px-4 py-2.5 flex items-center justify-between text-xs text-terracotta animate-fadeIn">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle size={14} className="text-terracotta shrink-0" />
-            <span>{storageErrorBanner}</span>
+            <span>{dataError}</span>
           </div>
           <button
-            onClick={() => setStorageErrorBanner(null)}
-            className="px-2.5 py-0.5 bg-terracotta text-white rounded-md text-[11px] font-bold hover:bg-terracotta/95 transition-colors ml-4 shrink-0 cursor-pointer"
+            onClick={loadAllData}
+            className="px-2.5 py-1 bg-terracotta text-white rounded-md text-[11px] font-bold hover:bg-terracotta/95 transition-colors ml-4 shrink-0 flex items-center gap-1 cursor-pointer"
           >
-            Entendido
+            <RefreshCw size={11} /> Reintentar
           </button>
         </div>
       )}
@@ -612,14 +752,14 @@ export default function App() {
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 flex items-center justify-between text-xs text-amber-800">
           <div className="flex items-center gap-2 font-medium">
             <Clock size={14} className="text-amber-600 animate-pulse" />
-            <span>Tu sesión se bloqueará en 1 minuto por inactividad. Presiona continuar para mantenerla abierta.</span>
+            <span>Tu sesión se cerrará en 1 minuto por inactividad. Presiona continuar para mantenerla abierta.</span>
           </div>
           <button
             onClick={() => {
               lastActiveRef.current = Date.now();
               setInactivityWarning(false);
             }}
-            className="px-3 py-1 bg-amber-600 text-white rounded-lg font-bold text-[11px] hover:bg-amber-700 transition-colors"
+            className="px-3 py-1 bg-amber-600 text-white rounded-lg font-bold text-[11px] hover:bg-amber-700 transition-colors cursor-pointer"
           >
             Continuar trabajando
           </button>
@@ -690,9 +830,11 @@ export default function App() {
           onAddPaymentMethod={handleAddPaymentMethod}
           onDeletePaymentMethod={handleDeletePaymentMethod}
           onResetDatabase={handleResetDatabase}
-          adminProfile={effectiveAdminProfile}
+          adminProfile={adminProfile}
           onUpdateAdminProfile={handleUpdateAdminProfile}
           onRestoreBackup={handleRestoreBackup}
+          onReloadData={loadAllData}
+          fullBackupData={fullBackupData}
         />
       )}
 

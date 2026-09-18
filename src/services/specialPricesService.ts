@@ -1,25 +1,24 @@
+import { supabase } from '../lib/supabaseClient';
 import { SpecialPrice } from '../types';
-import { safeGetJson, safeSetJson } from '../utils/storage';
-import { generateId } from '../utils/id';
+import { isValidUUID } from '../utils/uuid';
 
-const STORAGE_KEY = 'bs_special_prices';
+const mapRow = (row: any): SpecialPrice => ({
+  id: row.id,
+  clientId: row.client_id,
+  serviceId: row.service_id,
+  specialPrice: Number(row.special_price),
+  groupLabel: row.group_label ?? 'CLIENTA REGULAR',
+  isActive: Boolean(row.is_active),
+});
 
-/**
- * Servicio de Precios Especiales (Capa de abstracción de datos)
- * 
- * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
- * por operaciones upsert/delete directas en PostgreSQL:
- * - getSpecialPrices()    -> supabase.from('special_prices').select('*')
- * - setSpecialPrice()     -> supabase.from('special_prices').upsert(row, { onConflict: 'client_id,service_id' }).select().single()
- * - deleteSpecialPrice()  -> supabase.from('special_prices').delete().eq('id', id)
- */
 export const specialPricesService = {
   async getSpecialPrices(): Promise<SpecialPrice[]> {
-    return safeGetJson<SpecialPrice[]>(STORAGE_KEY, []);
-  },
-
-  async saveSpecialPrices(specialPrices: SpecialPrice[]): Promise<void> {
-    safeSetJson(STORAGE_KEY, specialPrices);
+    const { data, error } = await supabase
+      .from('special_prices')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(mapRow);
   },
 
   async setSpecialPrice(
@@ -27,41 +26,32 @@ export const specialPricesService = {
     serviceId: string,
     specialPrice: number,
     groupLabel: string = 'CLIENTA REGULAR',
-    isActive: boolean = true
+    isActive: boolean = true,
+    id?: string
   ): Promise<SpecialPrice> {
-    const prices = await this.getSpecialPrices();
-    const existingIndex = prices.findIndex(
-      (p) => p.clientId === clientId && p.serviceId === serviceId
-    );
-
-    if (existingIndex >= 0) {
-      const updated: SpecialPrice = {
-        ...prices[existingIndex],
-        specialPrice,
-        groupLabel,
-        isActive,
-      };
-      prices[existingIndex] = updated;
-      await this.saveSpecialPrices(prices);
-      return updated;
+    const payload: Record<string, any> = {
+      client_id: clientId,
+      service_id: serviceId,
+      special_price: specialPrice,
+      group_label: groupLabel,
+      is_active: isActive,
+      updated_at: new Date().toISOString(),
+    };
+    if (id && isValidUUID(id)) {
+      payload.id = id;
     }
 
-    const newPrice: SpecialPrice = {
-      id: generateId('special'),
-      clientId,
-      serviceId,
-      specialPrice,
-      groupLabel,
-      isActive,
-    };
-    prices.push(newPrice);
-    await this.saveSpecialPrices(prices);
-    return newPrice;
+    const { data, error } = await supabase
+      .from('special_prices')
+      .upsert(payload, { onConflict: 'client_id,service_id' })
+      .select()
+      .single();
+    if (error) throw error;
+    return mapRow(data);
   },
 
   async deleteSpecialPrice(id: string): Promise<void> {
-    const prices = await this.getSpecialPrices();
-    const filtered = prices.filter((p) => p.id !== id);
-    await this.saveSpecialPrices(filtered);
+    const { error } = await supabase.from('special_prices').delete().eq('id', id);
+    if (error) throw error;
   },
 };

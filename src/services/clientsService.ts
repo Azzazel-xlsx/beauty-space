@@ -1,63 +1,73 @@
+import { supabase } from '../lib/supabaseClient';
 import { Client } from '../types';
-import { safeGetJson, safeSetJson } from '../utils/storage';
-import { generateId } from '../utils/id';
+import { isValidUUID } from '../utils/uuid';
 
-const STORAGE_KEY = 'bs_clients';
+const mapRow = (row: any): Client => ({
+  id: row.id,
+  name: row.name,
+  phone: row.phone ?? '',
+  email: row.email ?? '',
+  notes: row.notes ?? '',
+  photoUrl: row.photo_url ?? '',
+  createdAt: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+});
 
-/**
- * Servicio de Clientas (Capa de abstracción de datos)
- * Actualmente implementado sobre localStorage. En la fase de migración a Supabase,
- * estas funciones implementarán llamadas a `supabase.from('clients')` manteniendo la misma firma.
- * 
- * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
- * por operaciones atómicas por fila usando Supabase client:
- * - getClients()      -> supabase.from('clients').select('*').order('name')
- * - getClientById(id) -> supabase.from('clients').select('*').eq('id', id).single()
- * - createClient()    -> supabase.from('clients').insert(row).select().single()
- * - updateClient()    -> supabase.from('clients').update(row).eq('id', id).select().single()
- * - deleteClient()    -> supabase.from('clients').delete().eq('id', id)
- */
 export const clientsService = {
   async getClients(): Promise<Client[]> {
-    return safeGetJson<Client[]>(STORAGE_KEY, []);
-  },
-
-  async saveClients(clients: Client[]): Promise<void> {
-    safeSetJson(STORAGE_KEY, clients);
+    const { data, error } = await supabase.from('clients').select('*').order('name');
+    if (error) throw error;
+    return (data ?? []).map(mapRow);
   },
 
   async getClientById(id: string): Promise<Client | null> {
-    const clients = await this.getClients();
-    return clients.find((c) => c.id === id) || null;
+    const { data, error } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
+    if (error || !data) return null;
+    return mapRow(data);
   },
 
-  async createClient(clientData: Omit<Client, 'id' | 'createdAt'>): Promise<Client> {
-    const clients = await this.getClients();
-    const newClient: Client = {
-      ...clientData,
-      id: generateId('client'),
-      createdAt: new Date().toISOString().split('T')[0],
+  async createClient(clientData: Omit<Client, 'id' | 'createdAt'> & { id?: string }): Promise<Client> {
+    const payload: Record<string, any> = {
+      name: clientData.name,
+      phone: clientData.phone ?? '',
+      email: clientData.email ?? '',
+      notes: clientData.notes ?? '',
+      photo_url: clientData.photoUrl ?? '',
     };
-    clients.push(newClient);
-    await this.saveClients(clients);
-    return newClient;
+    if (clientData.id && isValidUUID(clientData.id)) {
+      payload.id = clientData.id;
+    }
+
+    const { data, error } = await supabase
+      .from('clients')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapRow(data);
   },
 
   async updateClient(id: string, updates: Partial<Omit<Client, 'id' | 'createdAt'>>): Promise<Client> {
-    const clients = await this.getClients();
-    const index = clients.findIndex((c) => c.id === id);
-    if (index === -1) {
-      throw new Error(`Client with id ${id} not found`);
-    }
-    const updatedClient = { ...clients[index], ...updates };
-    clients[index] = updatedClient;
-    await this.saveClients(clients);
-    return updatedClient;
+    const payload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.phone !== undefined) payload.phone = updates.phone;
+    if (updates.email !== undefined) payload.email = updates.email;
+    if (updates.notes !== undefined) payload.notes = updates.notes;
+    if (updates.photoUrl !== undefined) payload.photo_url = updates.photoUrl;
+
+    const { data, error } = await supabase
+      .from('clients')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapRow(data);
   },
 
   async deleteClient(id: string): Promise<void> {
-    const clients = await this.getClients();
-    const filtered = clients.filter((c) => c.id !== id);
-    await this.saveClients(filtered);
+    const { error } = await supabase.from('clients').delete().eq('id', id);
+    if (error) throw error;
   },
 };

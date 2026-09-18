@@ -1,47 +1,64 @@
+import { supabase } from '../lib/supabaseClient';
 import { FinancialMovement } from '../types';
-import { safeGetJson, safeSetJson } from '../utils/storage';
-import { generateId } from '../utils/id';
+import { isValidUUID } from '../utils/uuid';
 
-const STORAGE_KEY = 'bs_movements';
+const mapRow = (row: any): FinancialMovement => ({
+  id: row.id,
+  type: row.type,
+  category: row.category,
+  amount: Number(row.amount),
+  date: row.date,
+  description: row.description ?? '',
+  paymentMethod: row.payment_method ?? undefined,
+  clientName: row.client_name ?? undefined,
+  serviceName: row.service_name ?? undefined,
+  appointmentId: row.appointment_id ?? undefined,
+  costOfSupplies: Number(row.cost_of_supplies) || 0,
+  staffCommission: Number(row.staff_commission) || 0,
+  notes: row.notes ?? '',
+});
 
-/**
- * Servicio de Movimientos Financieros (Capa de abstracción de datos)
- * 
- * TODO Fase 4: Al migrar a Supabase, reemplazar el patrón actual (leer array completo -> mutar en memoria -> regrabar todo)
- * por sentencias SQL directas por fila:
- * - getMovements()   -> supabase.from('financial_movements').select('*').order('date', { ascending: false })
- * - createMovement() -> supabase.from('financial_movements').insert(row).select().single()
- * - deleteMovement() -> supabase.from('financial_movements').delete().eq('id', id)
- */
 export const financialsService = {
   async getMovements(): Promise<FinancialMovement[]> {
-    const raw = safeGetJson<FinancialMovement[]>(STORAGE_KEY, []);
-    const seen = new Set<string>();
-    return raw.filter((m) => {
-      if (!m.id || seen.has(m.id)) return false;
-      seen.add(m.id);
-      return true;
-    });
+    const { data, error } = await supabase
+      .from('financial_movements')
+      .select('*')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(mapRow);
   },
 
-  async saveMovements(movements: FinancialMovement[]): Promise<void> {
-    safeSetJson(STORAGE_KEY, movements);
-  },
-
-  async createMovement(movementData: Omit<FinancialMovement, 'id'>): Promise<FinancialMovement> {
-    const movements = await this.getMovements();
-    const newMovement: FinancialMovement = {
-      ...movementData,
-      id: generateId('move'),
+  async createMovement(movementData: Omit<FinancialMovement, 'id'> & { id?: string }): Promise<FinancialMovement> {
+    const payload: Record<string, any> = {
+      type: movementData.type,
+      category: movementData.category,
+      amount: movementData.amount,
+      date: movementData.date,
+      description: movementData.description ?? '',
+      payment_method: movementData.paymentMethod ?? null,
+      client_name: movementData.clientName ?? '',
+      service_name: movementData.serviceName ?? '',
+      appointment_id: isValidUUID(movementData.appointmentId) ? movementData.appointmentId : null,
+      cost_of_supplies: movementData.costOfSupplies ?? 0,
+      staff_commission: movementData.staffCommission ?? 0,
+      notes: movementData.notes ?? '',
     };
-    movements.unshift(newMovement);
-    await this.saveMovements(movements);
-    return newMovement;
+    if (movementData.id && isValidUUID(movementData.id)) {
+      payload.id = movementData.id;
+    }
+
+    const { data, error } = await supabase
+      .from('financial_movements')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapRow(data);
   },
 
   async deleteMovement(id: string): Promise<void> {
-    const movements = await this.getMovements();
-    const filtered = movements.filter((m) => m.id !== id);
-    await this.saveMovements(filtered);
+    const { error } = await supabase.from('financial_movements').delete().eq('id', id);
+    if (error) throw error;
   },
 };
