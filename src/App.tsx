@@ -13,7 +13,6 @@ import { Client, Service, Appointment, FinancialMovement, SpecialPrice, PriceCha
 import { applyRestoreBackup, CompleteBackupData } from './utils/backup';
 import { generateId } from './utils/id';
 import { safeGetJson, safeSetJson, safeRemoveItem } from './utils/storage';
-import { getImageFromIndexedDB, saveImageToIndexedDB } from './utils/indexedDb';
 import { loadDemoData } from './data/demoData';
 
 export default function App() {
@@ -74,54 +73,15 @@ export default function App() {
     photoUrl: ''
   }));
 
-  const [resolvedAdminPhoto, setResolvedAdminPhoto] = useState<string | null>(null);
-
-  // Synchronize admin avatar from IndexedDB when stored as a reference
-  useEffect(() => {
-    let isMounted = true;
-    async function syncAdminPhoto() {
-      if (adminProfile.photoUrl.startsWith('indexeddb:') || adminProfile.photoUrl.startsWith('id:')) {
-        const id = adminProfile.photoUrl.replace(/^(indexeddb:|id:)/, '') || 'admin_avatar';
-        const dataUrl = await getImageFromIndexedDB(id);
-        if (isMounted && dataUrl) {
-          setResolvedAdminPhoto(dataUrl);
-        }
-      } else if (adminProfile.photoUrl.startsWith('data:')) {
-        // Transparent migration: move heavy data-URL from localStorage to IndexedDB
-        await saveImageToIndexedDB('admin_avatar', adminProfile.photoUrl);
-        if (isMounted) {
-          setResolvedAdminPhoto(adminProfile.photoUrl);
-          setAdminProfile((prev) => ({ ...prev, photoUrl: 'indexeddb:admin_avatar' }));
-        }
-      } else {
-        if (isMounted) {
-          setResolvedAdminPhoto(null);
-        }
-      }
-    }
-    syncAdminPhoto();
-    return () => {
-      isMounted = false;
-    };
-  }, [adminProfile.photoUrl]);
-
   const handleUpdateAdminProfile = (newProfile: { name: string; photoUrl: string }) => {
     setAdminProfile(newProfile);
-    if (newProfile.photoUrl.startsWith('indexeddb:')) {
-      const id = newProfile.photoUrl.replace(/^indexeddb:/, '') || 'admin_avatar';
-      getImageFromIndexedDB(id).then((dataUrl) => {
-        if (dataUrl) setResolvedAdminPhoto(dataUrl);
-      });
-    } else if (!newProfile.photoUrl.startsWith('data:')) {
-      setResolvedAdminPhoto(null);
-    }
   };
 
   const effectiveAdminProfile = {
     name: adminProfile.name,
-    photoUrl: resolvedAdminPhoto || (adminProfile.photoUrl.startsWith('indexeddb:')
-      ? 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
-      : adminProfile.photoUrl)
+    photoUrl: (adminProfile.photoUrl && !adminProfile.photoUrl.startsWith('indexeddb:'))
+      ? adminProfile.photoUrl
+      : 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr'
   };
 
   // Sync states safely back to storage with error handling
@@ -250,10 +210,10 @@ export default function App() {
 
 
   // ==================== WORKFLOW: CLIENTS ====================
-  const handleAddClient = (newCli: Omit<Client, 'id' | 'createdAt'>) => {
+  const handleAddClient = (newCli: Omit<Client, 'id' | 'createdAt'> & { id?: string }) => {
     const client: Client = {
       ...newCli,
-      id: generateId('client'),
+      id: newCli.id || generateId('client'),
       createdAt: new Date().toISOString().split('T')[0]
     };
     setClients((prev) => [...prev, client]);
@@ -262,6 +222,12 @@ export default function App() {
   const handleUpdateClientNotes = (clientId: string, notes: string) => {
     setClients((prev) =>
       prev.map((c) => (c.id === clientId ? { ...c, notes } : c))
+    );
+  };
+
+  const handleUpdateClientPhoto = (clientId: string, photoUrl: string) => {
+    setClients((prev) =>
+      prev.map((c) => (c.id === clientId ? { ...c, photoUrl } : c))
     );
   };
 
@@ -707,6 +673,7 @@ export default function App() {
           specialPrices={specialPrices}
           onAddClient={handleAddClient}
           onUpdateClientNotes={handleUpdateClientNotes}
+          onUpdateClientPhoto={handleUpdateClientPhoto}
           onDeleteClient={handleDeleteClient}
           onAddSpecialPrice={handleAddSpecialPrice}
           onDeleteSpecialPrice={handleDeleteSpecialPrice}

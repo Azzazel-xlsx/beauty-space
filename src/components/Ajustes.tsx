@@ -3,8 +3,6 @@ import { PriceChangeEvent } from '../types';
 import { Settings, ShieldAlert, CheckCircle2, Trash2, ClipboardList, Plus, CreditCard, User, Camera, Lock, KeyRound, Clock, ShieldCheck, Mail, LogOut, Eye, EyeOff } from 'lucide-react';
 import { hashPin, generateSalt } from '../utils/crypto';
 import { safeSetItem, safeGetItem } from '../utils/storage';
-import { compressImage } from '../utils/imageCompressor';
-import { saveImageToIndexedDB } from '../utils/indexedDb';
 import { formatMoney } from '../utils/formatters';
 import { useToast } from './Toast';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
@@ -220,7 +218,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
   // Admin Profile States
   const [profileName, setProfileName] = useState(adminProfile?.name || 'Valentina Moretti');
   const [profilePhoto, setProfilePhoto] = useState(adminProfile?.photoUrl || '');
-  const [photoSavedInIndexedDb, setPhotoSavedInIndexedDb] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(false);
 
   useEffect(() => {
@@ -233,9 +231,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
     if (!profileName.trim()) return;
 
     let targetPhotoRef = profilePhoto.trim();
-    if (photoSavedInIndexedDb || profilePhoto.startsWith('data:') || profilePhoto.startsWith('indexeddb:')) {
-      targetPhotoRef = 'indexeddb:admin_avatar';
-    } else if (!targetPhotoRef) {
+    if (!targetPhotoRef || targetPhotoRef.startsWith('indexeddb:')) {
       targetPhotoRef = 'https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr';
     }
 
@@ -250,19 +246,38 @@ export const Ajustes: React.FC<AjustesProps> = ({
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      try {
-        const compressed = await compressImage(file, {
-          maxWidth: 400,
-          maxHeight: 400,
-          quality: 0.85
-        });
-        // Offload heavy image binary to IndexedDB, saving precious localStorage quota
-        await saveImageToIndexedDB('admin_avatar', compressed);
-        setProfilePhoto(compressed);
-        setPhotoSavedInIndexedDb(true);
-      } catch (err) {
-        console.error('Error al comprimir o guardar foto de perfil en IndexedDB:', err);
+    if (!file) return;
+
+    try {
+      setUploadingPhoto(true);
+      const { error } = await supabase.storage
+        .from('salon-media')
+        .upload('admin/avatar.webp', file, { upsert: true });
+
+      if (error) {
+        console.error('Error al subir foto de admin a Supabase Storage:', error);
+        toast.error('Error al subir la foto, intenta de nuevo');
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('salon-media')
+        .getPublicUrl('admin/avatar.webp');
+
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      setProfilePhoto(publicUrl);
+      onUpdateAdminProfile({
+        name: profileName.trim() || adminProfile?.name || 'Valentina Moretti',
+        photoUrl: publicUrl
+      });
+      toast.success('¡Foto de perfil actualizada con éxito!');
+    } catch (err) {
+      console.error('Error al subir la foto de admin:', err);
+      toast.error('Error al subir la foto, intenta de nuevo');
+    } finally {
+      setUploadingPhoto(false);
+      if (e.target) {
+        e.target.value = '';
       }
     }
   };
@@ -300,17 +315,27 @@ export const Ajustes: React.FC<AjustesProps> = ({
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       
-      {/* Upper Panel Grid: Balanced 2-Column Responsive Layout */}
+      {/* Encabezado Principal de Sección Ajustes con Tipografía Fluida */}
+      <div className="space-y-1">
+        <h1 className="font-serif text-[length:var(--text-fluid-h1)] font-bold text-on-surface tracking-tight leading-tight">
+          Configuración & Auditoría
+        </h1>
+        <p className="text-xs sm:text-sm text-on-surface-variant/75 font-medium">
+          Gestión de identidad del estudio, credenciales de acceso y parámetros operativos.
+        </p>
+      </div>
+
+      {/* Grid Principal: Rebalanceo a 2 Columnas de Altura Similar */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start @container">
         
-        {/* COLUMN 1: Perfil, Cuenta Supabase, Seguridad y Catálogos */}
-        <div className="space-y-6">
+        {/* COLUMNA 1: Perfil de Administradora + Cuenta Supabase Auth */}
+        <div className="space-y-6 @container/col1">
           
           {/* Perfil de Administradora */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-            <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
-              <User size={16} /> Perfil de Administradora
-            </h3>
+            <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
+              <User size={18} /> Perfil de Administradora
+            </h2>
             <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
               Configura tu foto de perfil y el nombre que se visualiza en la barra lateral del estudio.
             </p>
@@ -323,13 +348,19 @@ export const Ajustes: React.FC<AjustesProps> = ({
             )}
 
             <form onSubmit={handleUpdateProfile} className="space-y-4">
-              <div className="flex flex-col items-center gap-3 bg-surface-container/20 p-4 rounded-2xl border border-outline-variant/10">
-                <div className="relative group cursor-pointer">
+              <div className="flex flex-col @sm:flex-row items-center gap-4 bg-surface-container/20 p-4 rounded-2xl border border-outline-variant/10 text-center @sm:text-left">
+                <div className="relative group cursor-pointer shrink-0">
                   <img
-                    src={profilePhoto || "https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr"}
+                    src={(profilePhoto && !profilePhoto.startsWith('indexeddb:')) ? profilePhoto : "https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr"}
                     alt="Perfil Preview"
                     className="w-20 h-20 rounded-full object-cover border-2 border-primary/30 group-hover:opacity-85 transition-opacity"
                   />
+                  {uploadingPhoto && (
+                    <div className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center text-white text-[10px] font-bold">
+                      <span className="animate-spin text-sm mb-0.5">◌</span>
+                      Subiendo...
+                    </div>
+                  )}
                   <label htmlFor="photo-file-upload" className="absolute bottom-0 right-0 p-1.5 bg-primary text-white rounded-full hover:bg-primary/95 transition-all shadow-md cursor-pointer flex items-center justify-center min-w-[28px] min-h-[28px]">
                     <Camera size={12} />
                   </label>
@@ -337,11 +368,12 @@ export const Ajustes: React.FC<AjustesProps> = ({
                     id="photo-file-upload"
                     type="file"
                     accept="image/*"
+                    disabled={uploadingPhoto}
                     onChange={handlePhotoUpload}
                     className="hidden"
                   />
                 </div>
-                <div className="text-center">
+                <div>
                   <p className="text-[10px] uppercase tracking-wider font-bold text-primary">Sube tu foto</p>
                   <p className="text-[9px] text-on-surface-variant/60">Haz clic en la cámara para subir imagen</p>
                 </div>
@@ -365,10 +397,9 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   <input
                     type="text"
                     placeholder="https://..."
-                    value={profilePhoto.startsWith('data:') || profilePhoto.startsWith('indexeddb:') ? '' : profilePhoto}
+                    value={profilePhoto.startsWith('indexeddb:') ? '' : profilePhoto}
                     onChange={(e) => {
                       setProfilePhoto(e.target.value);
-                      setPhotoSavedInIndexedDb(false);
                     }}
                     className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold min-h-[44px]"
                   />
@@ -387,9 +418,9 @@ export const Ajustes: React.FC<AjustesProps> = ({
           {/* Cuenta de Administradora (Supabase Auth) */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
-                <ShieldCheck size={16} /> Cuenta de Administradora
-              </h3>
+              <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
+                <ShieldCheck size={18} /> Cuenta de Administradora
+              </h2>
               <span className="text-[9px] font-bold uppercase tracking-wider text-primary/80 bg-primary/10 px-2.5 py-0.5 rounded-full">
                 Supabase Auth
               </span>
@@ -438,50 +469,52 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   </div>
                 )}
 
-                {/* Formulario para cambiar contraseña */}
+                {/* Formulario para cambiar contraseña con Container Query */}
                 <form onSubmit={handleChangePassword} className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant flex items-center gap-1">
-                      <KeyRound size={11} /> Nueva Contraseña
-                    </label>
-                    <div className="relative">
+                  <div className="grid grid-cols-1 @md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant flex items-center gap-1">
+                        <KeyRound size={11} /> Nueva Contraseña
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showNewPassword ? 'text' : 'password'}
+                          required
+                          minLength={6}
+                          placeholder="Mínimo 6 caracteres"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 pr-11 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-sans font-medium min-h-[44px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-on-surface-variant/60 hover:text-primary rounded-lg transition-colors cursor-pointer"
+                          title={showNewPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                          aria-label={showNewPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                        >
+                          {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">
+                        Confirmar Nueva Contraseña
+                      </label>
                       <input
                         type={showNewPassword ? 'text' : 'password'}
                         required
                         minLength={6}
-                        placeholder="Mínimo 6 caracteres"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 pr-11 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-sans font-medium min-h-[44px]"
+                        placeholder="Repite la nueva contraseña"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-sans font-medium min-h-[44px]"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-on-surface-variant/60 hover:text-primary rounded-lg transition-colors cursor-pointer"
-                        title={showNewPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
-                        aria-label={showNewPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
-                      >
-                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">
-                      Confirmar Nueva Contraseña
-                    </label>
-                    <input
-                      type={showNewPassword ? 'text' : 'password'}
-                      required
-                      minLength={6}
-                      placeholder="Repite la nueva contraseña"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-sans font-medium min-h-[44px]"
-                    />
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <div className="flex flex-col @sm:flex-row gap-2 pt-1">
                     <button
                       type="submit"
                       disabled={updatingPassword}
@@ -503,7 +536,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                 </form>
               </div>
             ) : (
-              /* Estado vacío cuando aún no hay sesión de Supabase */
+              /* Estado cuando aún no hay sesión de Supabase */
               <div className="space-y-3.5">
                 <div className="bg-surface-container/40 p-4 rounded-2xl border border-outline-variant/20 space-y-2">
                   <div className="flex items-center gap-2 text-primary font-serif font-black text-xs">
@@ -511,14 +544,14 @@ export const Ajustes: React.FC<AjustesProps> = ({
                     <span>Cuenta no configurada aún</span>
                   </div>
                   <p className="text-[11px] text-on-surface-variant/75 leading-relaxed">
-                    Actualmente el acceso se gestiona a través del PIN local de seguridad. La cuenta centralizada de Supabase Auth (email y contraseña) se integrará durante la Fase 4 de migración.
+                    Actualmente el acceso se gestiona a través del inicio de sesión de Supabase Auth (email y contraseña). Inicia sesión para sincronizar datos en tiempo real.
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] text-on-surface-variant/70 px-1">
                   <span className="flex items-center gap-1.5 font-medium">
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                    Acceso activo mediante PIN local
+                    Acceso activo mediante Supabase Auth
                   </span>
                   <span className="uppercase tracking-wider font-bold text-primary/70">
                     Fase 4
@@ -528,18 +561,23 @@ export const Ajustes: React.FC<AjustesProps> = ({
             )}
           </div>
 
-          {/* Seguridad y Control de Acceso (PIN local) */}
+        </div>
+
+        {/* COLUMNA 2: Seguridad y Control de Acceso + Auditoría Completa de Precios */}
+        <div className="space-y-6 @container/col2">
+
+          {/* Seguridad y Control de Acceso (PIN local + Inactividad) */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
-                <Lock size={16} /> Seguridad y Control de Acceso
-              </h3>
+              <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
+                <Lock size={18} /> Seguridad y Control de Acceso
+              </h2>
               <span className="text-[9px] font-bold uppercase tracking-wider text-primary/80 bg-primary/10 px-2 py-0.5 rounded-full">
                 SHA-256 + Salt
               </span>
             </div>
             <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Configura el PIN de desbloqueo y el tiempo de bloqueo automático por inactividad.
+              Configura el PIN de desbloqueo rápido y el tiempo de bloqueo automático por inactividad.
             </p>
             <div className="wavy-divider opacity-30"></div>
 
@@ -574,7 +612,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">Nuevo PIN</label>
                   <input
@@ -623,7 +661,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   </span>
                 )}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-2 @sm:grid-cols-4 gap-1.5">
                 {[5, 15, 30, 0].map((mins) => (
                   <button
                     key={mins}
@@ -645,17 +683,84 @@ export const Ajustes: React.FC<AjustesProps> = ({
             <div className="bg-surface-container/30 p-2.5 rounded-xl border border-outline-variant/15 flex items-start gap-2 text-[10px] text-on-surface-variant/75">
               <ShieldCheck size={14} className="text-primary shrink-0 mt-0.5" />
               <p className="leading-normal">
-                <strong>Mitigación Transitoria (OWASP A01):</strong> Esta barrera protege contra acceso físico no autorizado en terminal. La arquitectura definitiva requerirá backend con autenticación centralizada.
+                <strong>Mitigación Transitoria (OWASP A01):</strong> Esta barrera protege contra acceso físico no autorizado en terminal. La arquitectura definitiva opera en conjunto con Supabase Auth.
               </p>
             </div>
           </div>
 
-          {/* Subgrid: Categorías & Métodos de Pago */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-6">
+          {/* PRICE CHANGE AUDIT TIMELINE */}
+          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+            <div className="flex flex-col @sm:flex-row @sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-1.5">
+                  <Settings size={18} /> Auditoría Completa de Precios
+                </h2>
+                <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/60 font-bold mt-0.5">Historial completo de modificaciones de tarifas</p>
+              </div>
+              <span className="text-[9px] font-black bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full uppercase self-start @sm:self-auto">
+                {priceChanges.length} Cambios
+              </span>
+            </div>
+
+            <div className="wavy-divider opacity-40"></div>
+
+            {/* List of price audit modifications */}
+            <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1">
+              {priceChanges.length === 0 ? (
+                <div className="py-14 text-center text-xs text-on-surface-variant/50 font-semibold border border-dashed border-outline-variant/25 rounded-2xl px-4">
+                  No se registran cambios de tarifas o auditoría de precios en esta sesión. Todo se mantiene en valores estándar.
+                </div>
+              ) : (
+                <div className="relative border-l-2 border-outline-variant/40 ml-2.5 pl-4 space-y-5 py-1">
+                  {priceChanges.map((event) => (
+                    <div key={event.id} className="relative space-y-1.5 text-xs">
+                      {/* Node dot */}
+                      <span className="absolute -left-[24.5px] top-1.5 w-3 h-3 rounded-full border-2 border-primary bg-white"></span>
+                      
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <h4 className="font-bold text-on-surface">{event.name}</h4>
+                          <p className="text-[10px] text-on-surface-variant/50 font-semibold">{event.date} • Resp: {event.user}</p>
+                        </div>
+                        <div className="text-right flex items-baseline gap-1.5">
+                          <span className="text-[10px] text-on-surface-variant/50 font-medium line-through">{formatMoney(event.oldPrice)}</span>
+                          <span className="font-mono text-primary font-black text-sm">{formatMoney(event.newPrice)}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-surface-container/45 px-3 py-2 rounded-xl border border-outline-variant/10">
+                        <p className="text-[11px] text-on-surface-variant/85 italic">
+                          "{event.reason || 'Actualización periódica por costos/inflación.'}"
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* PANEL INFERIOR: Catálogos del Estudio (Categorías de Egresos y Métodos de Pago) */}
+      <div className="space-y-4 pt-2">
+        <div className="space-y-1">
+          <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-bold text-on-surface flex items-center gap-2">
+            <ClipboardList size={20} className="text-primary" /> Catálogos y Operación del Estudio
+          </h2>
+          <p className="text-xs text-on-surface-variant/75 font-medium">
+            Administra las clasificaciones de egresos y modalidades de cobro habilitadas en tu flujo diario.
+          </p>
+        </div>
+
+        <div className="@container/catalogs">
+          <div className="grid grid-cols-1 @md:grid-cols-2 gap-6">
             
             {/* Expense Categories */}
             <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-              <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
+              <h3 className="font-serif text-[length:var(--text-fluid-h3)] font-black text-primary flex items-center gap-2">
                 <ClipboardList size={16} /> Categorías de Egresos
               </h3>
               <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
@@ -707,7 +812,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
 
             {/* Payment Methods */}
             <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-              <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
+              <h3 className="font-serif text-[length:var(--text-fluid-h3)] font-black text-primary flex items-center gap-2">
                 <CreditCard size={16} /> Métodos de Pago
               </h3>
               <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
@@ -758,66 +863,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
             </div>
 
           </div>
-
         </div>
-
-        {/* COLUMN 2: Auditoría, Respaldo y Mantenimiento */}
-        <div className="space-y-6">
-
-          {/* PRICE CHANGE AUDIT TIMELINE */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-serif text-base font-black text-primary flex items-center gap-1.5">
-                  <Settings size={18} /> Auditoría Completa de Precios
-                </h3>
-                <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/60 font-bold mt-0.5">Historial completo de modificaciones de tarifas</p>
-              </div>
-              <span className="text-[9px] font-black bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full uppercase">
-                {priceChanges.length} Cambios
-              </span>
-            </div>
-
-            <div className="wavy-divider opacity-40"></div>
-
-            {/* List of price audit modifications */}
-            <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
-              {priceChanges.length === 0 ? (
-                <div className="py-20 text-center text-xs text-on-surface-variant/50 font-semibold border border-dashed border-outline-variant/25 rounded-2xl">
-                  No se registran cambios de tarifas o auditoría de precios en esta sesión. Todo se mantiene en valores estándar.
-                </div>
-              ) : (
-                <div className="relative border-l-2 border-outline-variant/40 ml-2.5 pl-4 space-y-5 py-1">
-                  {priceChanges.map((event) => (
-                    <div key={event.id} className="relative space-y-1.5 text-xs">
-                      {/* Node dot */}
-                      <span className="absolute -left-[24.5px] top-1.5 w-3 h-3 rounded-full border-2 border-primary bg-white"></span>
-                      
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h4 className="font-bold text-on-surface">{event.name}</h4>
-                          <p className="text-[10px] text-on-surface-variant/50 font-semibold">{event.date} • Resp: {event.user}</p>
-                        </div>
-                        <div className="text-right flex items-baseline gap-1.5">
-                          <span className="text-[10px] text-on-surface-variant/50 font-medium line-through">{formatMoney(event.oldPrice)}</span>
-                          <span className="font-mono text-primary font-black text-sm">{formatMoney(event.newPrice)}</span>
-                        </div>
-                      </div>
-
-                      <div className="bg-surface-container/45 px-3 py-2 rounded-xl border border-outline-variant/10">
-                        <p className="text-[11px] text-on-surface-variant/85 italic">
-                          "{event.reason || 'Actualización periódica por costos/inflación.'}"
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-        </div>
-
       </div>
 
     </div>

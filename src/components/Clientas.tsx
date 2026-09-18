@@ -4,16 +4,17 @@ import { Plus, Search, Calendar, Phone, Mail, FileText, Sparkles, Tag, ArrowLeft
 import { generateId } from '../utils/id';
 import { useDebounce } from '../hooks/useDebounce';
 import { formatMoney } from '../utils/formatters';
-import { compressImage } from '../utils/imageCompressor';
 import { useToast } from './Toast';
+import { supabase } from '../lib/supabaseClient';
 
 interface ClientasProps {
   clients: Client[];
   appointments: Appointment[];
   services: Service[];
   specialPrices: SpecialPrice[];
-  onAddClient: (client: Omit<Client, 'id' | 'createdAt'>) => void;
+  onAddClient: (client: Omit<Client, 'id' | 'createdAt'> & { id?: string }) => void;
   onUpdateClientNotes: (clientId: string, notes: string) => void;
+  onUpdateClientPhoto?: (clientId: string, photoUrl: string) => void;
   onDeleteClient?: (id: string) => void;
   onAddSpecialPrice?: (newSp: Omit<SpecialPrice, 'id'>) => void;
   onDeleteSpecialPrice?: (id: string) => void;
@@ -43,6 +44,7 @@ export const Clientas: React.FC<ClientasProps> = ({
   specialPrices,
   onAddClient,
   onUpdateClientNotes,
+  onUpdateClientPhoto,
   onDeleteClient,
   onAddSpecialPrice,
   onDeleteSpecialPrice
@@ -61,33 +63,50 @@ export const Clientas: React.FC<ClientasProps> = ({
   const [newNotes, setNewNotes] = useState('');
   const [avatarIndex, setAvatarIndex] = useState(0);
   const [customPhoto, setCustomPhoto] = useState<string | null>(null);
-  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isDragOverPhoto, setIsDragOverPhoto] = useState(false);
   const [formError, setFormError] = useState('');
+  const [newClientId, setNewClientId] = useState<string>(() => generateId('client'));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // File upload processing with downscaling and compression
+  // Existing client detail photo upload state
+  const [isUploadingDetailPhoto, setIsUploadingDetailPhoto] = useState(false);
+  const detailFileInputRef = useRef<HTMLInputElement>(null);
+
+  // File upload processing for new client
   const handleFileProcess = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setFormError('Por favor selecciona un archivo de imagen válido (JPG, PNG, WebP).');
       return;
     }
     try {
-      setIsCompressingPhoto(true);
+      setIsUploadingPhoto(true);
       setFormError('');
-      // Downscale to 360x360 for high quality yet compact storage (~20KB)
-      const compressed = await compressImage(file, {
-        maxWidth: 360,
-        maxHeight: 360,
-        quality: 0.85,
-        mimeType: 'image/jpeg'
-      });
-      setCustomPhoto(compressed);
+
+      const { error } = await supabase.storage
+        .from('salon-media')
+        .upload(`clients/${newClientId}.webp`, file, { upsert: true });
+
+      if (error) {
+        console.error('Error subiendo foto de clienta a Supabase Storage:', error);
+        setFormError('Error al subir la foto, intenta de nuevo');
+        toast.error('Error al subir la foto, intenta de nuevo');
+        return;
+      }
+
+      const { data } = supabase.storage
+        .from('salon-media')
+        .getPublicUrl(`clients/${newClientId}.webp`);
+
+      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
+      setCustomPhoto(publicUrl);
+      toast.success('¡Foto subida con éxito a Supabase Storage!');
     } catch (err) {
       console.error('Error procesando imagen de clienta:', err);
-      setFormError('No se pudo procesar la imagen seleccionada. Intenta con otra foto.');
+      setFormError('Error al subir la foto, intenta de nuevo');
+      toast.error('Error al subir la foto, intenta de nuevo');
     } finally {
-      setIsCompressingPhoto(false);
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -107,6 +126,48 @@ export const Clientas: React.FC<ClientasProps> = ({
     const file = e.dataTransfer.files?.[0];
     if (file) {
       handleFileProcess(file);
+    }
+  };
+
+  // Upload handler for existing client photo in detail view
+  const handleDetailPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, clientId: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor selecciona un archivo de imagen válido (JPG, PNG, WebP).');
+      return;
+    }
+
+    try {
+      setIsUploadingDetailPhoto(true);
+      const { error } = await supabase.storage
+        .from('salon-media')
+        .upload(`clients/${clientId}.webp`, file, { upsert: true });
+
+      if (error) {
+        console.error('Error subiendo foto a Supabase Storage:', error);
+        toast.error('Error al subir la foto, intenta de nuevo');
+        return;
+      }
+
+      const { data } = supabase.storage
+        .from('salon-media')
+        .getPublicUrl(`clients/${clientId}.webp`);
+
+      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
+      if (onUpdateClientPhoto) {
+        onUpdateClientPhoto(clientId, publicUrl);
+      }
+      toast.success('¡Foto de clienta actualizada con éxito!');
+    } catch (err) {
+      console.error('Error al subir foto de clienta:', err);
+      toast.error('Error al subir la foto, intenta de nuevo');
+    } finally {
+      setIsUploadingDetailPhoto(false);
+      if (detailFileInputRef.current) {
+        detailFileInputRef.current.value = '';
+      }
     }
   };
 
@@ -233,6 +294,7 @@ export const Clientas: React.FC<ClientasProps> = ({
     }
 
     onAddClient({
+      id: newClientId,
       name: newName,
       phone: newPhone,
       email: newEmail || 'Sin email',
@@ -249,6 +311,7 @@ export const Clientas: React.FC<ClientasProps> = ({
     setNewNotes('');
     setAvatarIndex(0);
     setCustomPhoto(null);
+    setNewClientId(generateId('client'));
     setFormError('');
     setShowAddForm(false);
   };
@@ -325,16 +388,43 @@ export const Clientas: React.FC<ClientasProps> = ({
 
           {/* Tarjeta de Identificación Básica de la Clienta */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-3xl p-6 hard-shadow flex flex-col sm:flex-row items-center sm:items-start gap-6">
-            <div className="relative shrink-0">
+            <div className="relative shrink-0 group">
               <img
                 src={selectedClient.photoUrl}
                 alt={selectedClient.name}
                 className="w-24 h-24 rounded-full object-cover border-2 border-primary/20 p-1 bg-white shadow-xs"
               />
+              {isUploadingDetailPhoto && (
+                <div className="absolute inset-0 rounded-full bg-black/60 flex flex-col items-center justify-center text-white text-[9px] font-bold">
+                  <span className="animate-spin text-sm mb-0.5">◌</span>
+                  Subiendo...
+                </div>
+              )}
               {clientStats && clientStats.loyaltyScore >= 70 && (
                 <span className="absolute bottom-0 right-1 w-7 h-7 bg-primary text-white rounded-full flex items-center justify-center border-2 border-white shadow-xs" title="Cliente VIP">
                   <Award size={13} className="fill-white" />
                 </span>
+              )}
+              {onUpdateClientPhoto && (
+                <>
+                  <input
+                    ref={detailFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    disabled={isUploadingDetailPhoto}
+                    onChange={(e) => handleDetailPhotoUpload(e, selectedClient.id)}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => detailFileInputRef.current?.click()}
+                    disabled={isUploadingDetailPhoto}
+                    className="absolute top-0 right-0 p-1 bg-primary text-white rounded-full hover:scale-110 transition-transform shadow-xs cursor-pointer border border-white"
+                    title="Actualizar foto en Supabase Storage"
+                  >
+                    <Camera size={11} />
+                  </button>
+                </>
               )}
             </div>
 
@@ -865,11 +955,11 @@ export const Clientas: React.FC<ClientasProps> = ({
                           <span className="text-[9px] font-bold mt-0.5">{customPhoto ? 'Cambiar' : 'Subir'}</span>
                         </div>
 
-                        {/* Processing Spinner Overlay */}
-                        {isCompressingPhoto && (
+                        {/* Uploading Spinner Overlay */}
+                        {isUploadingPhoto && (
                           <div className="absolute inset-0 rounded-full bg-black/70 flex flex-col items-center justify-center text-white text-[10px] font-bold">
                             <span className="animate-spin text-base mb-0.5">◌</span>
-                            Procesando...
+                            Subiendo...
                           </div>
                         )}
                       </div>
@@ -878,8 +968,9 @@ export const Clientas: React.FC<ClientasProps> = ({
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md border-2 border-white hover:scale-110 transition-transform cursor-pointer"
-                        title="Subir foto desde tu dispositivo"
+                        disabled={isUploadingPhoto}
+                        className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md border-2 border-white hover:scale-110 transition-transform cursor-pointer disabled:opacity-60"
+                        title="Subir foto a Supabase Storage"
                         aria-label="Subir foto desde dispositivo"
                       >
                         <Camera size={13} />
@@ -890,12 +981,12 @@ export const Clientas: React.FC<ClientasProps> = ({
                     <div className="flex-1 text-center sm:text-left space-y-2">
                       <div>
                         <p className="text-xs font-bold text-on-surface">
-                          {customPhoto ? 'Foto real de la clienta lista' : 'Foto real o retrato ilustrado'}
+                          {customPhoto ? 'Foto real de la clienta guardada' : 'Foto real o retrato ilustrado'}
                         </p>
                         <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
                           {customPhoto
-                            ? 'La imagen se ha adaptado al formato circular y se mostrará en su ficha y citas.'
-                            : 'Puedes subir una foto real desde tu dispositivo o seleccionar un retrato ilustrado de referencia como placeholder.'}
+                            ? 'La foto se subió a Supabase Storage y se mostrará en su ficha y citas.'
+                            : 'Puedes subir una foto real a Supabase Storage o seleccionar un retrato ilustrado de referencia como placeholder.'}
                         </p>
                       </div>
 
@@ -903,11 +994,11 @@ export const Clientas: React.FC<ClientasProps> = ({
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          disabled={isCompressingPhoto}
+                          disabled={isUploadingPhoto}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-all shadow-xs cursor-pointer disabled:opacity-60"
                         >
                           <Upload size={13} />
-                          {customPhoto ? 'Cambiar foto real' : 'Subir foto real'}
+                          {customPhoto ? 'Cambiar foto en Supabase' : 'Subir foto a Supabase'}
                         </button>
 
                         {customPhoto && (
