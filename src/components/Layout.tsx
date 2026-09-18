@@ -189,7 +189,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         {/* Top bar - Desktop only */}
         <header className="hidden md:flex items-center justify-between px-8 py-5 border-b border-outline-variant/30 bg-surface-container-lowest">
           <div>
-            <h1 className="font-serif text-lg font-semibold capitalize text-on-surface">
+            <h1 className="font-serif text-[length:var(--text-fluid-h1)] font-semibold capitalize text-on-surface leading-tight">
               {activeTab === 'finanzas' && 'Finanzas Editoriales'}
               {activeTab === 'agenda' && 'Agenda de Citas'}
               {activeTab === 'clientas' && 'Dossier de Clientas'}

@@ -26,25 +26,24 @@ let clientInstance: SupabaseClient | null = null;
  */
 export const getSupabase = (): SupabaseClient => {
   if (!clientInstance) {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error(
-        '[Beauty Space] Faltan las variables de entorno de Supabase.\n' +
-        'Por favor define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en tu archivo .env.\n' +
-        'Consulta .env.example para ver la plantilla de configuración.'
-      );
-    }
+    const url = supabaseUrl && !supabaseUrl.includes('tu-proyecto.supabase.co')
+      ? supabaseUrl
+      : 'https://placeholder.supabase.co';
+    const key = supabaseAnonKey && !supabaseAnonKey.includes('tu-anon-key')
+      ? supabaseAnonKey
+      : 'placeholder-anon-key';
 
     if (!isSupabaseConfigured()) {
       console.warn(
-        '[Beauty Space] VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY contienen valores de ejemplo/placeholder.\n' +
+        '[Beauty Space] VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY no están configuradas con valores reales.\n' +
         'Configura credenciales reales de tu proyecto Supabase en .env para habilitar sincronización en la nube.'
       );
     }
 
     // Inicializar cliente con opciones estándar
     clientInstance = createClient(
-      supabaseUrl || 'https://placeholder.supabase.co',
-      supabaseAnonKey || 'placeholder-anon-key',
+      url,
+      key,
       {
         auth: {
           persistSession: true,

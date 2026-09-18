@@ -1,15 +1,21 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Eye, EyeOff, ArrowRight, Loader2, User } from 'lucide-react';
+import { Lock, Eye, EyeOff, ArrowRight, Loader2, User, Mail } from 'lucide-react';
 import { hashPin, generateSalt } from '../utils/crypto';
 import { AdminProfile } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import loginBrandBgAsset from '../assets/images/beauty_space_editorial_1789497481351.jpg';
 
 /**
- * PIN por defecto utilizado únicamente en el primer arranque si no existe un hash previo.
- * TODO: reemplazar por flujo de configuración inicial antes de producción
+ * PIN por defecto reservado para la funcionalidad de bloqueo rápido de pantalla (Screen Lock).
+ * Se conserva exportado para compatibilidad con el plan de migración (supabase/NOTES.md).
  */
 export const DEFAULT_FIRST_RUN_PIN = '1234';
+
+/**
+ * Utilidades criptográficas conservadas para el bloqueo de pantalla sobre sesión activa.
+ */
+export { hashPin, generateSalt };
 
 /**
  * Imagen de fondo para el panel de marca en la pantalla de login.
@@ -84,54 +90,63 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginSuccess }) => {
-  const [pin, setPin] = useState('');
-  const [showPin, setShowPin] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isShaking, setIsShaking] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value.replace(/\D/g, '').slice(0, 8);
-    setPin(val);
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value);
+    if (error) setError(null);
+  };
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value);
     if (error) setError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pin.trim()) return;
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) return;
 
     setError(null);
     setLoading(true);
 
     try {
-      let salt = localStorage.getItem('bs_auth_salt');
-      let storedHash = localStorage.getItem('bs_auth_hash');
-
-      // Inicializar PIN por defecto si aún no existe
-      if (!salt || !storedHash) {
-        salt = generateSalt();
-        storedHash = await hashPin(DEFAULT_FIRST_RUN_PIN, salt);
-        localStorage.setItem('bs_auth_salt', salt);
-        localStorage.setItem('bs_auth_hash', storedHash);
-      }
-
-      // Micro-retardo para una transición fluida y elegante
-      await new Promise((resolve) => setTimeout(resolve, 360));
-
-      const inputHash = await hashPin(pin.trim(), salt);
-
-      if (inputHash === storedHash) {
-        onLoginSuccess();
-      } else {
-        setError('PIN incorrecto. Verifica tus credenciales de acceso.');
+      if (!isSupabaseConfigured()) {
+        setError('Supabase no está configurado. Por favor define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en tu archivo .env para acceder.');
         setIsShaking(true);
-        setPin('');
         setTimeout(() => setIsShaking(false), 500);
-        if (inputRef.current) inputRef.current.focus();
+        return;
       }
-    } catch {
-      setError('Error verificando credenciales en este terminal.');
+
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password: password,
+      });
+
+      if (authError) {
+        const errorMsg =
+          authError.message === 'Invalid login credentials'
+            ? 'Credenciales inválidas. Verifica tu correo y contraseña.'
+            : authError.message || 'Error al iniciar sesión.';
+        setError(errorMsg);
+        setIsShaking(true);
+        setTimeout(() => setIsShaking(false), 500);
+        if (passwordInputRef.current) passwordInputRef.current.focus();
+        return;
+      }
+
+      if (data?.session || data?.user) {
+        onLoginSuccess();
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Error verificando credenciales en este terminal.');
       setIsShaking(true);
       setTimeout(() => setIsShaking(false), 500);
     } finally {
@@ -174,7 +189,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
           </h1>
 
           {/* Space (en cursiva serif elegante) */}
-          <span className="font-serif italic text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-[70px] font-normal text-[#384628] leading-[0.95] -mt-1 sm:-mt-2">
+          <span className="font-serif italic text-[length:var(--text-fluid-display)] font-normal text-[#384628] leading-[0.95] -mt-1 sm:-mt-2">
             Space
           </span>
         </motion.div>
@@ -205,7 +220,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.55, delay: 0.2 }}
-              className="font-serif text-2xl xs:text-3xl sm:text-4xl md:text-[44px] lg:text-[48px] font-normal text-[#1A1C16] tracking-tight leading-tight"
+              className="font-serif text-[length:var(--text-fluid-h1)] font-normal text-[#1A1C16] tracking-tight leading-tight"
             >
               Inicia sesión
             </motion.h2>
@@ -216,7 +231,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
               transition={{ duration: 0.55, delay: 0.25 }}
               className="text-xs xs:text-[13px] sm:text-[14.5px] font-normal text-[#6C7164] leading-relaxed pt-0.5 sm:pt-1"
             >
-              Accede a tu cuenta para continuar con la gestión de tu negocio.
+              Accede a tu cuenta de Supabase para continuar con la gestión de tu negocio.
             </motion.p>
           </div>
 
@@ -253,9 +268,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
             </div>
           </motion.div>
 
-          {/* Formulario de Entrada del PIN */}
-          <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
-            {/* Input de PIN tipo password con candado y toggle de ojo */}
+          {/* Formulario de Entrada: Correo Electrónico + Contraseña */}
+          <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-3.5">
+            {/* Input de Correo Electrónico con ícono Mail */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{
@@ -265,8 +280,47 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
               }}
               transition={{
                 x: { duration: 0.45, ease: 'easeInOut' },
-                opacity: { duration: 0.5, delay: 0.35 },
-                y: { duration: 0.5, delay: 0.35 },
+                opacity: { duration: 0.5, delay: 0.32 },
+                y: { duration: 0.5, delay: 0.32 },
+              }}
+              className={`relative flex items-center h-12 sm:h-14 bg-[#FAF8F5] rounded-2xl border transition-all duration-200 ${
+                error
+                  ? 'border-[#BA1A1A]/70 bg-[#BA1A1A]/5 ring-1 ring-[#BA1A1A]/30'
+                  : 'border-[#DEDAD0] hover:border-[#566544]/60 focus-within:border-[#566544] focus-within:ring-2 focus-within:ring-[#566544]/15'
+              }`}
+            >
+              {/* Ícono de Correo a la izquierda */}
+              <div className="pl-3.5 sm:pl-4.5 pr-2 sm:pr-2.5 text-[#7E8474] pointer-events-none shrink-0 flex items-center">
+                <Mail size={16} strokeWidth={1.8} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+
+              {/* Input Nativo: text-base en móvil para prevenir zoom automático */}
+              <input
+                ref={emailInputRef}
+                type="email"
+                autoComplete="email"
+                autoFocus
+                required
+                value={email}
+                onChange={handleEmailChange}
+                placeholder="Correo electrónico"
+                className="w-full h-full pr-4 text-base sm:text-[15px] font-sans text-[#1C1D18] bg-transparent placeholder:text-[#7E8474] placeholder:font-normal focus:outline-none min-h-[44px]"
+                aria-label="Correo electrónico de administradora"
+              />
+            </motion.div>
+
+            {/* Input de Contraseña tipo password con candado y toggle de ojo */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                x: isShaking ? [-8, 8, -6, 6, -3, 3, 0] : 0,
+              }}
+              transition={{
+                x: { duration: 0.45, ease: 'easeInOut' },
+                opacity: { duration: 0.5, delay: 0.38 },
+                y: { duration: 0.5, delay: 0.38 },
               }}
               className={`relative flex items-center h-12 sm:h-14 bg-[#FAF8F5] rounded-2xl border transition-all duration-200 ${
                 error
@@ -281,30 +335,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
 
               {/* Input Nativo: text-base en móvil para prevenir zoom automático */}
               <input
-                ref={inputRef}
-                type={showPin ? 'text' : 'password'}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={8}
-                autoFocus
+                ref={passwordInputRef}
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
                 required
-                value={pin}
-                onChange={handlePinChange}
-                placeholder="PIN de seguridad"
-                className="w-full h-full pr-12 text-base sm:text-[15px] font-sans text-[#1C1D18] bg-transparent placeholder:text-[#7E8474] placeholder:font-normal focus:outline-none tracking-widest min-h-[44px]"
-                aria-label="PIN de seguridad"
+                value={password}
+                onChange={handlePasswordChange}
+                placeholder="Contraseña"
+                className="w-full h-full pr-12 text-base sm:text-[15px] font-sans text-[#1C1D18] bg-transparent placeholder:text-[#7E8474] placeholder:font-normal focus:outline-none min-h-[44px]"
+                aria-label="Contraseña de seguridad"
               />
 
-              {/* Botón de alternar ojo para mostrar/ocultar PIN: Touch target mínimo de 44px */}
+              {/* Botón de alternar ojo para mostrar/ocultar Contraseña: Touch target mínimo de 44px */}
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.9 }}
-                onClick={() => setShowPin(!showPin)}
+                onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-1 top-1/2 -translate-y-1/2 text-[#7E8474] hover:text-[#384628] w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-black/5 transition-colors cursor-pointer"
-                title={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
-                aria-label={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
+                title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               >
-                {showPin ? (
+                {showPassword ? (
                   <EyeOff size={18} strokeWidth={1.8} />
                 ) : (
                   <Eye size={18} strokeWidth={1.8} />
@@ -327,16 +378,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
               )}
             </AnimatePresence>
 
-            {/* Botón Pill: DESBLOQUEAR Y ACCEDER con flecha */}
+            {/* Botón Pill: INICIAR SESIÓN con flecha */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-              className="pt-1"
+              transition={{ duration: 0.5, delay: 0.42 }}
+              className="pt-1.5"
             >
               <motion.button
                 type="submit"
-                disabled={loading || !pin.trim()}
+                disabled={loading || !email.trim() || !password}
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
                 className="w-full h-12 sm:h-[54px] bg-[#566544] hover:bg-[#4B583A] text-white rounded-full text-[11px] sm:text-[12.5px] uppercase tracking-[0.2em] font-semibold transition-colors duration-200 flex items-center justify-center relative px-4 sm:px-6 cursor-pointer shadow-xs hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed group"
@@ -348,7 +399,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
                   </div>
                 ) : (
                   <>
-                    <span className="text-center">DESBLOQUEAR Y ACCEDER</span>
+                    <span className="text-center">INICIAR SESIÓN</span>
                     <ArrowRight
                       size={16}
                       strokeWidth={2}
