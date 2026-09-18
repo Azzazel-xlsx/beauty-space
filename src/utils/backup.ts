@@ -19,7 +19,7 @@ import { safeSetJson } from './storage';
 export interface CompleteBackupData {
   schemaVersion: '1.0';
   exportedAt: string;
-  app: 'Beauty Space Studio';
+  app: 'Beauty Space' | 'Beauty Space Studio';
   summary: {
     clientsCount: number;
     appointmentsCount: number;
@@ -114,7 +114,7 @@ export async function generateCompleteBackup(): Promise<CompleteBackupData> {
   const backup: CompleteBackupData = {
     schemaVersion: '1.0',
     exportedAt: new Date().toISOString(),
-    app: 'Beauty Space Studio',
+    app: 'Beauty Space',
     summary: {
       clientsCount: clients.length,
       appointmentsCount: appointments.length,
@@ -195,7 +195,7 @@ export function validateBackupJson(rawJson: string): BackupValidationResult {
     const backupData: CompleteBackupData = {
       schemaVersion: parsed.schemaVersion || '1.0',
       exportedAt: parsed.exportedAt || new Date().toISOString(),
-      app: 'Beauty Space Studio',
+      app: 'Beauty Space',
       summary: {
         clientsCount: clients.length,
         appointmentsCount: appointments.length,

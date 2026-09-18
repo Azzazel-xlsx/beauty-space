@@ -28,7 +28,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
 
 
   return (
-    <div className="min-h-screen bg-background font-sans text-on-surface flex flex-col md:flex-row antialiased">
+    <div className="min-h-dvh bg-background font-sans text-on-surface flex flex-col md:flex-row antialiased">
       {/* Sidebar - Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-surface-container border-r border-outline-variant/40 p-6 shrink-0 relative">
         {/* Decorative floral spark */}
@@ -38,9 +38,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
 
         {/* Brand/Logo */}
         <div className="mb-8 pt-4">
-          <div className="flex items-center gap-1.5 justify-center">
-            <span className="font-serif text-2xl tracking-widest text-primary font-bold">BEAUTY</span>
-            <span className="font-serif text-2xl italic text-primary/70 font-light">Space</span>
+          <div className="flex items-center gap-2.5 justify-center">
+            <img
+              src="/favicon.png"
+              alt="Beauty Space"
+              referrerPolicy="no-referrer"
+              className="w-8 h-8 rounded-lg shadow-xs object-cover"
+            />
+            <div className="flex items-center gap-1">
+              <span className="font-serif text-2xl tracking-widest text-primary font-bold">BEAUTY</span>
+              <span className="font-serif text-2xl italic text-primary/70 font-light">Space</span>
+            </div>
           </div>
         </div>
 
@@ -56,7 +64,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-full text-sm font-medium tracking-wide transition-all duration-300 ${
+                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-full text-sm font-medium tracking-wide transition-all duration-300 min-h-[44px] cursor-pointer ${
                   isActive
                     ? 'bg-primary text-white editorial-shadow font-semibold'
                     : 'text-on-surface-variant hover:bg-surface-container-high hover:text-primary'
@@ -85,7 +93,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
           {onLogout && (
             <button
               onClick={onLogout}
-              className="p-2 text-on-surface-variant/70 hover:text-primary hover:bg-surface-container-high rounded-full transition-colors shrink-0"
+              className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-on-surface-variant/70 hover:text-primary hover:bg-surface-container-high rounded-full transition-colors shrink-0 cursor-pointer"
               title="Bloquear sesión (Logout)"
               aria-label="Bloquear sesión"
             >
@@ -96,14 +104,23 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
       </aside>
 
       {/* Header - Mobile */}
-      <header className="md:hidden bg-surface-container border-b border-outline-variant/40 px-4 py-3.5 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-1">
-          <span className="font-serif text-xl tracking-wider text-primary font-bold">BEAUTY</span>
-          <span className="font-serif text-xl italic text-primary/70 font-light">Space</span>
+      <header className="md:hidden bg-surface-container border-b border-outline-variant/40 px-4 py-2.5 flex items-center justify-between sticky top-0 z-40 safe-top">
+        <div className="flex items-center gap-2">
+          <img
+            src="/favicon.png"
+            alt="Beauty Space"
+            referrerPolicy="no-referrer"
+            className="w-6 h-6 rounded-md shadow-xs object-cover"
+          />
+          <div className="flex items-center gap-1">
+            <span className="font-serif text-xl tracking-wider text-primary font-bold">BEAUTY</span>
+            <span className="font-serif text-xl italic text-primary/70 font-light">Space</span>
+          </div>
         </div>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-1.5 text-primary rounded-full hover:bg-surface-container-high transition-colors"
+          className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-primary rounded-full hover:bg-surface-container-high transition-colors cursor-pointer"
+          aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
         >
           {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
@@ -111,7 +128,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
 
       {/* Mobile Drawer Navigation */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-30 bg-black/20 backdrop-blur-xs pt-[53px]">
+        <div className="md:hidden fixed inset-0 z-30 bg-black/20 backdrop-blur-xs pt-[57px] safe-top">
           <div className="bg-surface-container-low p-6 border-b border-outline-variant/40 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4 duration-200">
             <nav className="space-y-1">
               {navItems.map((item) => {
@@ -124,7 +141,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
                       setActiveTab(item.id);
                       setMobileMenuOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-full text-sm font-medium transition-all ${
+                    className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-full text-sm font-medium transition-all min-h-[44px] cursor-pointer ${
                       isActive
                         ? 'bg-primary text-white font-semibold'
                         : 'text-on-surface-variant hover:bg-surface-container-high'
@@ -155,7 +172,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
                     setMobileMenuOpen(false);
                     onLogout();
                   }}
-                  className="p-2 text-on-surface-variant/70 hover:text-primary hover:bg-surface-container-high rounded-full transition-colors shrink-0"
+                  className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-on-surface-variant/70 hover:text-primary hover:bg-surface-container-high rounded-full transition-colors shrink-0 cursor-pointer"
                   title="Bloquear sesión (Logout)"
                   aria-label="Bloquear sesión"
                 >
@@ -168,7 +185,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
       )}
 
       {/* Main Content Pane */}
-      <main className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0">
+      <main className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0 safe-pb">
         {/* Top bar - Desktop only */}
         <header className="hidden md:flex items-center justify-between px-8 py-5 border-b border-outline-variant/30 bg-surface-container-lowest">
           <div>
@@ -196,13 +213,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         </header>
 
         {/* Content View Container */}
-        <div className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto">
+        <div className="flex-1 p-3.5 sm:p-4 md:p-8 overflow-y-auto max-w-7xl w-full mx-auto">
           {children}
         </div>
       </main>
 
-      {/* Mobile Bottom Navigation Bar (Floating-style coquette bar) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface-container border-t border-outline-variant/40 flex items-center justify-around py-2 px-1 backdrop-blur-md">
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface-container border-t border-outline-variant/40 flex items-center justify-around py-1.5 px-1 backdrop-blur-md safe-bottom">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -210,10 +227,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className="flex flex-col items-center justify-center flex-1 py-1 px-1 text-center transition-all"
+              className="flex flex-col items-center justify-center flex-1 py-1 px-1 text-center transition-all min-h-[44px] cursor-pointer"
             >
               <div
-                className={`p-2 rounded-full transition-all duration-300 ${
+                className={`p-1.5 sm:p-2 rounded-full transition-all duration-300 ${
                   isActive ? 'bg-primary text-white scale-105' : 'text-on-surface-variant'
                 }`}
               >

@@ -142,11 +142,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
   const displayName = adminProfile?.name?.trim() || 'Juliana castro';
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] flex flex-row antialiased selection:bg-[#566544]/20 overflow-x-hidden">
+    <div className="min-h-dvh h-dvh bg-[#FAF8F5] flex flex-row antialiased selection:bg-[#566544]/20 overflow-x-hidden safe-top safe-bottom">
       {/* ========================================================================= */}
       {/* COLUMNA IZQUIERDA: PANEL BOTÁNICO & BRANDING VERTICAL (SIEMPRE A LA IZQUIERDA) */}
       {/* ========================================================================= */}
-      <div className="w-[34%] xs:w-[36%] sm:w-[38%] md:w-[40%] lg:w-[42%] xl:w-[44%] min-h-screen relative shrink-0 overflow-hidden flex items-center justify-center bg-[#F3EFE9] border-r border-[#E8E4DA]/60">
+      <div className="w-[34%] xs:w-[36%] sm:w-[38%] md:w-[40%] lg:w-[42%] xl:w-[44%] min-h-dvh h-dvh relative shrink-0 overflow-hidden flex items-center justify-center bg-[#F3EFE9] border-r border-[#E8E4DA]/60">
         {/* Fotografía de plantas/hojas sobre soporte de travertino con iluminación natural */}
         <motion.img
           initial={{ scale: 1.05, opacity: 0 }}
@@ -161,21 +161,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
         {/* Scrim cálido muy sutil que asegura lectura impecable manteniendo la naturalidad de la foto */}
         <div className="absolute inset-0 bg-[#FAF8F5]/10 pointer-events-none" />
 
-        {/* Bloque de Identidad de Marca: Isotipo floral + BEAUTY Space + Subtítulo */}
+        {/* Bloque de Identidad de Marca: BEAUTY Space */}
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
           className="relative z-10 flex flex-col items-center justify-center text-center px-3 sm:px-6 py-6 sm:py-8 select-none"
         >
-          {/* Isotipo floral de hoja */}
-          <div className="mb-2 sm:mb-3.5 text-[#384628]">
-            <BrandFloralEmblem
-              size={30}
-              className="sm:w-[40px] sm:h-[40px] lg:w-[46px] lg:h-[46px] text-[#384628] drop-shadow-xs"
-            />
-          </div>
-
           {/* BEAUTY */}
           <h1 className="font-serif text-xl xs:text-2xl sm:text-3xl md:text-4xl lg:text-[44px] font-normal tracking-[0.24em] text-[#384628] uppercase leading-none pl-1">
             BEAUTY
@@ -185,19 +177,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
           <span className="font-serif italic text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-[70px] font-normal text-[#384628] leading-[0.95] -mt-1 sm:-mt-2">
             Space
           </span>
-
-          {/* Subtítulo: ADMINISTRACIÓN Y FINANZAS */}
-          <div className="mt-2.5 sm:mt-4 text-[7.5px] xs:text-[8.5px] sm:text-[9.5px] md:text-[10.5px] tracking-[0.22em] sm:tracking-[0.26em] font-medium text-[#384628] uppercase leading-relaxed text-center">
-            <p>ADMINISTRACIÓN</p>
-            <p>Y FINANZAS</p>
-          </div>
         </motion.div>
       </div>
 
       {/* ========================================================================= */}
       {/* COLUMNA DERECHA: FORMULARIO DE INICIO DE SESIÓN */}
       {/* ========================================================================= */}
-      <div className="flex-1 min-h-screen flex flex-col justify-center items-center px-4 xs:px-6 sm:px-10 md:px-12 lg:px-16 xl:px-24 py-8 sm:py-12 bg-[#FAF8F5] overflow-y-auto">
+      <div className="flex-1 min-h-dvh h-dvh flex flex-col justify-center items-center px-4 xs:px-6 sm:px-10 md:px-12 lg:px-16 xl:px-24 py-8 sm:py-12 bg-[#FAF8F5] overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -293,7 +279,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
                 <Lock size={16} strokeWidth={1.8} className="sm:w-[18px] sm:h-[18px]" />
               </div>
 
-              {/* Input Nativo */}
+              {/* Input Nativo: text-base en móvil para prevenir zoom automático */}
               <input
                 ref={inputRef}
                 type={showPin ? 'text' : 'password'}
@@ -305,23 +291,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
                 value={pin}
                 onChange={handlePinChange}
                 placeholder="PIN de seguridad"
-                className="w-full h-full pr-10 sm:pr-12 text-[14px] sm:text-[15px] font-sans text-[#1C1D18] bg-transparent placeholder:text-[#7E8474] placeholder:font-normal focus:outline-none tracking-widest"
+                className="w-full h-full pr-12 text-base sm:text-[15px] font-sans text-[#1C1D18] bg-transparent placeholder:text-[#7E8474] placeholder:font-normal focus:outline-none tracking-widest min-h-[44px]"
                 aria-label="PIN de seguridad"
               />
 
-              {/* Botón de alternar ojo para mostrar/ocultar PIN */}
+              {/* Botón de alternar ojo para mostrar/ocultar PIN: Touch target mínimo de 44px */}
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setShowPin(!showPin)}
-                className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 text-[#7E8474] hover:text-[#384628] p-1.5 sm:p-2 rounded-full hover:bg-black/5 transition-colors cursor-pointer"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-[#7E8474] hover:text-[#384628] w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-black/5 transition-colors cursor-pointer"
                 title={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
                 aria-label={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
               >
                 {showPin ? (
-                  <EyeOff size={16} strokeWidth={1.8} className="sm:w-[18px] sm:h-[18px]" />
+                  <EyeOff size={18} strokeWidth={1.8} />
                 ) : (
-                  <Eye size={16} strokeWidth={1.8} className="sm:w-[18px] sm:h-[18px]" />
+                  <Eye size={18} strokeWidth={1.8} />
                 )}
               </motion.button>
             </motion.div>

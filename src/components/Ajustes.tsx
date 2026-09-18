@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { PriceChangeEvent } from '../types';
-import { Settings, ShieldAlert, CheckCircle2, Trash2, Calendar, ClipboardList, Sparkles, RefreshCw, Plus, CreditCard, User, Camera, Lock, KeyRound, Clock, ShieldCheck, Download, Upload, Database, HardDrive, FileJson, AlertCircle } from 'lucide-react';
+import { Settings, ShieldAlert, CheckCircle2, Trash2, ClipboardList, Plus, CreditCard, User, Camera, Lock, KeyRound, Clock, ShieldCheck, Mail, LogOut, Eye, EyeOff } from 'lucide-react';
 import { hashPin, generateSalt } from '../utils/crypto';
-import { downloadBackupFile, validateBackupJson, getStorageMetrics, CompleteBackupData } from '../utils/backup';
 import { safeSetItem, safeGetItem } from '../utils/storage';
 import { compressImage } from '../utils/imageCompressor';
 import { saveImageToIndexedDB } from '../utils/indexedDb';
 import { formatMoney } from '../utils/formatters';
-import { Modal } from './Modal';
 import { useToast } from './Toast';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface AjustesProps {
   priceChanges: PriceChangeEvent[];
@@ -18,10 +17,10 @@ interface AjustesProps {
   onDeleteCategory: (category: string) => void;
   onAddPaymentMethod: (method: string) => void;
   onDeletePaymentMethod: (method: string) => void;
-  onResetDatabase: () => void;
+  onResetDatabase?: () => void;
   adminProfile?: { name: string; photoUrl: string };
   onUpdateAdminProfile: (profile: { name: string; photoUrl: string }) => void;
-  onRestoreBackup?: (backup: CompleteBackupData) => void;
+  onRestoreBackup?: (backup: any) => void;
 }
 
 export const Ajustes: React.FC<AjustesProps> = ({
@@ -32,10 +31,8 @@ export const Ajustes: React.FC<AjustesProps> = ({
   onDeleteCategory,
   onAddPaymentMethod,
   onDeletePaymentMethod,
-  onResetDatabase,
   adminProfile,
-  onUpdateAdminProfile,
-  onRestoreBackup
+  onUpdateAdminProfile
 }) => {
   const toast = useToast();
   const [newCat, setNewCat] = useState('');
@@ -43,18 +40,113 @@ export const Ajustes: React.FC<AjustesProps> = ({
   const [catError, setCatError] = useState('');
   const [methodError, setMethodError] = useState('');
 
-  // Backup & Storage Metrics State
-  const [storageMetrics, setStorageMetrics] = useState(() => getStorageMetrics());
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportSuccess, setExportSuccess] = useState(false);
-  const [restoreCandidate, setRestoreCandidate] = useState<CompleteBackupData | null>(null);
-  const [restoreError, setRestoreError] = useState('');
-  const [restoreSuccess, setRestoreSuccess] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  // Supabase Auth State
+  const [authUser, setAuthUser] = useState<{ id: string; email?: string } | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    setStorageMetrics(getStorageMetrics());
-  }, [priceChanges, categories, paymentMethods]);
+    let isMounted = true;
+    const checkUser = async () => {
+      try {
+        if (!isSupabaseConfigured()) {
+          if (isMounted) {
+            setAuthUser(null);
+            setAuthLoading(false);
+          }
+          return;
+        }
+        const { data, error } = await supabase.auth.getUser();
+        if (isMounted) {
+          if (error || !data?.user) {
+            setAuthUser(null);
+          } else {
+            setAuthUser(data.user);
+          }
+          setAuthLoading(false);
+        }
+      } catch {
+        if (isMounted) {
+          setAuthUser(null);
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    checkUser();
+
+    let subscription: { unsubscribe: () => void } | null = null;
+    try {
+      if (isSupabaseConfigured()) {
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+          if (isMounted) {
+            setAuthUser(session?.user ?? null);
+          }
+        });
+        subscription = data.subscription;
+      }
+    } catch {
+      // Supabase no inicializado aún
+    }
+
+    return () => {
+      isMounted = false;
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMessage(null);
+
+    if (!newPassword.trim()) {
+      setPasswordMessage({ text: 'Ingresa una nueva contraseña.', type: 'error' });
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordMessage({ text: 'La contraseña debe tener al menos 6 caracteres.', type: 'error' });
+      toast.error('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ text: 'Las contraseñas no coinciden.', type: 'error' });
+      toast.error('Las contraseñas no coinciden.');
+      return;
+    }
+
+    setUpdatingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordMessage({ text: '¡Contraseña actualizada con éxito!', type: 'success' });
+      toast.success('¡Contraseña actualizada en Supabase!');
+      setTimeout(() => setPasswordMessage(null), 4000);
+    } catch (err: any) {
+      const msg = err?.message || 'Error al actualizar contraseña.';
+      setPasswordMessage({ text: msg, type: 'error' });
+      toast.error(msg);
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      setAuthUser(null);
+      toast.success('Sesión de Supabase cerrada.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al cerrar sesión de Supabase.');
+    }
+  };
 
   // Security & PIN State
   const [currentPin, setCurrentPin] = useState('');
@@ -123,74 +215,6 @@ export const Ajustes: React.FC<AjustesProps> = ({
     setTimeoutSaved(true);
     toast.success(`Tiempo de bloqueo fijado en ${minutes} min.`);
     setTimeout(() => setTimeoutSaved(false), 2500);
-  };
-
-  // Backup handlers
-  const handleExportBackup = async () => {
-    setIsExporting(true);
-    try {
-      await downloadBackupFile();
-      setExportSuccess(true);
-      toast.success('¡Respaldo JSON descargado con éxito!');
-      setTimeout(() => setExportSuccess(false), 4000);
-    } catch (err) {
-      console.error(err);
-      toast.error('Error generando el respaldo de datos.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleSelectRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setRestoreError('');
-    setRestoreSuccess(false);
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result;
-      if (typeof content === 'string') {
-        const validation = validateBackupJson(content);
-        if (validation.valid && validation.backupData) {
-          setRestoreCandidate(validation.backupData);
-          toast.info('Archivo de respaldo verificado. Confirma la restauración.');
-        } else {
-          const errMsg = validation.error || 'El archivo seleccionado no es un respaldo válido.';
-          setRestoreError(errMsg);
-          toast.error(errMsg);
-          setRestoreCandidate(null);
-        }
-      }
-    };
-    reader.onerror = () => {
-      const errMsg = 'Error al leer el archivo de respaldo del disco.';
-      setRestoreError(errMsg);
-      toast.error(errMsg);
-    };
-    reader.readAsText(file);
-    // Reset file input so user can choose again if needed
-    e.target.value = '';
-  };
-
-  const handleConfirmRestore = async () => {
-    if (!restoreCandidate) return;
-
-    try {
-      if (onRestoreBackup) {
-        onRestoreBackup(restoreCandidate);
-      }
-      setRestoreSuccess(true);
-      toast.success('¡Base de datos restaurada correctamente!');
-      setRestoreCandidate(null);
-      setStorageMetrics(getStorageMetrics());
-      setTimeout(() => setRestoreSuccess(false), 5000);
-    } catch (err: any) {
-      const errMsg = `Error aplicando la restauración: ${err?.message || 'Error desconocido'}`;
-      setRestoreError(errMsg);
-      toast.error(errMsg);
-    }
   };
 
   // Admin Profile States
@@ -277,9 +301,9 @@ export const Ajustes: React.FC<AjustesProps> = ({
     <div className="space-y-8 animate-in fade-in duration-300">
       
       {/* Upper Panel Grid: Balanced 2-Column Responsive Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start @container">
         
-        {/* COLUMN 1: Perfil, Seguridad y Catálogos Operativos */}
+        {/* COLUMN 1: Perfil, Cuenta Supabase, Seguridad y Catálogos */}
         <div className="space-y-6">
           
           {/* Perfil de Administradora */}
@@ -306,7 +330,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                     alt="Perfil Preview"
                     className="w-20 h-20 rounded-full object-cover border-2 border-primary/30 group-hover:opacity-85 transition-opacity"
                   />
-                  <label htmlFor="photo-file-upload" className="absolute bottom-0 right-0 p-1.5 bg-primary text-white rounded-full hover:bg-primary/95 transition-all shadow-md cursor-pointer flex items-center justify-center">
+                  <label htmlFor="photo-file-upload" className="absolute bottom-0 right-0 p-1.5 bg-primary text-white rounded-full hover:bg-primary/95 transition-all shadow-md cursor-pointer flex items-center justify-center min-w-[28px] min-h-[28px]">
                     <Camera size={12} />
                   </label>
                   <input
@@ -332,7 +356,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                     placeholder="Ej. Valentina Moretti..."
                     value={profileName}
                     onChange={(e) => setProfileName(e.target.value)}
-                    className="w-full bg-surface-container-low text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                    className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold min-h-[44px]"
                   />
                 </div>
 
@@ -346,21 +370,165 @@ export const Ajustes: React.FC<AjustesProps> = ({
                       setProfilePhoto(e.target.value);
                       setPhotoSavedInIndexedDb(false);
                     }}
-                    className="w-full bg-surface-container-low text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                    className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold min-h-[44px]"
                   />
                 </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 hover:shadow-md transition-all flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 hover:shadow-md transition-all flex items-center justify-center gap-2 min-h-[44px] cursor-pointer"
               >
                 Guardar Cambios de Perfil
               </button>
             </form>
           </div>
 
-          {/* Seguridad y Control de Acceso */}
+          {/* Cuenta de Administradora (Supabase Auth) */}
+          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
+                <ShieldCheck size={16} /> Cuenta de Administradora
+              </h3>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-primary/80 bg-primary/10 px-2.5 py-0.5 rounded-full">
+                Supabase Auth
+              </span>
+            </div>
+            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
+              Gestión de credenciales maestras y autenticación en la nube para acceso centralizado.
+            </p>
+            <div className="wavy-divider opacity-30"></div>
+
+            {authLoading ? (
+              <div className="py-6 text-center text-xs text-on-surface-variant/60 font-medium">
+                Verificando estado de cuenta en Supabase...
+              </div>
+            ) : authUser ? (
+              <div className="space-y-4">
+                {/* Email de la cuenta autenticada */}
+                <div className="bg-surface-container-low p-3.5 rounded-2xl border border-outline-variant/20 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                      <Mail size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant block">
+                        Correo Autenticado
+                      </span>
+                      <p className="text-xs sm:text-sm font-bold text-on-surface truncate">
+                        {authUser.email || 'Email no disponible'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-bold text-sage bg-sage/10 border border-sage/20 px-2.5 py-0.5 rounded-full shrink-0">
+                    Sesión Activa
+                  </span>
+                </div>
+
+                {passwordMessage && (
+                  <div
+                    className={`p-2.5 rounded-xl text-xs flex items-center gap-2 font-medium ${
+                      passwordMessage.type === 'success'
+                        ? 'bg-sage/10 text-sage border border-sage/20'
+                        : 'bg-terracotta/10 text-terracotta border border-terracotta/20'
+                    }`}
+                  >
+                    {passwordMessage.type === 'success' ? <CheckCircle2 size={14} /> : <ShieldAlert size={14} />}
+                    {passwordMessage.text}
+                  </div>
+                )}
+
+                {/* Formulario para cambiar contraseña */}
+                <form onSubmit={handleChangePassword} className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant flex items-center gap-1">
+                      <KeyRound size={11} /> Nueva Contraseña
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        placeholder="Mínimo 6 caracteres"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 pr-11 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-sans font-medium min-h-[44px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-on-surface-variant/60 hover:text-primary rounded-lg transition-colors cursor-pointer"
+                        title={showNewPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                        aria-label={showNewPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                      >
+                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">
+                      Confirmar Nueva Contraseña
+                    </label>
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      placeholder="Repite la nueva contraseña"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-sans font-medium min-h-[44px]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                    <button
+                      type="submit"
+                      disabled={updatingPassword}
+                      className="flex-1 py-2.5 px-4 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer disabled:opacity-50"
+                    >
+                      <Lock size={13} />
+                      {updatingPassword ? 'Actualizando...' : 'Actualizar Contraseña'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="py-2.5 px-4 bg-surface-container-high text-on-surface-variant hover:text-terracotta hover:bg-terracotta/10 border border-outline-variant/25 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer"
+                    >
+                      <LogOut size={13} />
+                      Cerrar Sesión
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              /* Estado vacío cuando aún no hay sesión de Supabase */
+              <div className="space-y-3.5">
+                <div className="bg-surface-container/40 p-4 rounded-2xl border border-outline-variant/20 space-y-2">
+                  <div className="flex items-center gap-2 text-primary font-serif font-black text-xs">
+                    <User size={15} />
+                    <span>Cuenta no configurada aún</span>
+                  </div>
+                  <p className="text-[11px] text-on-surface-variant/75 leading-relaxed">
+                    Actualmente el acceso se gestiona a través del PIN local de seguridad. La cuenta centralizada de Supabase Auth (email y contraseña) se integrará durante la Fase 4 de migración.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-on-surface-variant/70 px-1">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                    Acceso activo mediante PIN local
+                  </span>
+                  <span className="uppercase tracking-wider font-bold text-primary/70">
+                    Fase 4
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Seguridad y Control de Acceso (PIN local) */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
@@ -402,11 +570,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   placeholder="PIN actual (ej. 1234)"
                   value={currentPin}
                   onChange={(e) => setCurrentPin(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-semibold"
+                  className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-semibold min-h-[44px]"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">Nuevo PIN</label>
                   <input
@@ -417,7 +585,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                     placeholder="Nuevo PIN"
                     value={newPin}
                     onChange={(e) => setNewPin(e.target.value)}
-                    className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-semibold"
+                    className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-semibold min-h-[44px]"
                   />
                 </div>
                 <div className="space-y-1">
@@ -430,14 +598,14 @@ export const Ajustes: React.FC<AjustesProps> = ({
                     placeholder="Repite el PIN"
                     value={confirmPin}
                     onChange={(e) => setConfirmPin(e.target.value)}
-                    className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-semibold"
+                    className="w-full bg-surface-container-low text-base sm:text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-mono font-semibold min-h-[44px]"
                   />
                 </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-2 bg-primary/90 text-white rounded-xl text-xs font-bold hover:bg-primary transition-all flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 bg-primary/90 text-white rounded-xl text-xs font-bold hover:bg-primary transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer"
               >
                 Actualizar PIN de Seguridad
               </button>
@@ -455,13 +623,13 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   </span>
                 )}
               </div>
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                 {[5, 15, 30, 0].map((mins) => (
                   <button
                     key={mins}
                     type="button"
                     onClick={() => handleTimeoutChange(mins)}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all ${
+                    className={`py-2 px-2 rounded-lg text-xs font-semibold border transition-all min-h-[44px] flex items-center justify-center cursor-pointer ${
                       timeoutMinutes === mins
                         ? 'bg-primary text-white border-primary shadow-xs'
                         : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:border-primary/40'
@@ -505,28 +673,32 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   placeholder="Nueva categoría..."
                   value={newCat}
                   onChange={(e) => setNewCat(e.target.value)}
-                  className="flex-1 bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
+                  className="flex-1 bg-surface-container-low text-base sm:text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold min-h-[44px]"
                 />
                 <button
                   type="submit"
-                  className="px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center cursor-pointer"
+                  className="px-3.5 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center min-h-[44px] min-w-[44px] cursor-pointer"
+                  title="Agregar categoría"
+                  aria-label="Agregar categoría"
                 >
-                  <Plus size={14} />
+                  <Plus size={16} />
                 </button>
               </form>
 
               <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
                 {categories.map((cat) => (
                   <div key={cat} className="flex items-center justify-between py-2 px-3 bg-surface-container/30 border border-outline-variant/10 rounded-xl text-xs font-semibold">
-                    <span className="text-on-surface-variant">{cat}</span>
+                    <span className="text-on-surface-variant truncate pr-2">{cat}</span>
                     <button
                       onClick={() => {
                         onDeleteCategory(cat);
                         toast.info(`Categoría "${cat}" eliminada.`);
                       }}
-                      className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer"
+                      className="text-on-surface-variant/40 hover:text-terracotta min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-terracotta/10 rounded-full transition-all cursor-pointer shrink-0"
+                      title={`Eliminar categoría ${cat}`}
+                      aria-label={`Eliminar categoría ${cat}`}
                     >
-                      <Trash2 size={12} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 ))}
@@ -553,28 +725,32 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   placeholder="Ej. MercadoPago..."
                   value={newMethod}
                   onChange={(e) => setNewMethod(e.target.value)}
-                  className="flex-1 bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold uppercase placeholder:normal-case"
+                  className="flex-1 bg-surface-container-low text-base sm:text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold uppercase placeholder:normal-case min-h-[44px]"
                 />
                 <button
                   type="submit"
-                  className="px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center cursor-pointer"
+                  className="px-3.5 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center min-h-[44px] min-w-[44px] cursor-pointer"
+                  title="Agregar método de pago"
+                  aria-label="Agregar método de pago"
                 >
-                  <Plus size={14} />
+                  <Plus size={16} />
                 </button>
               </form>
 
               <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
                 {paymentMethods.map((method) => (
                   <div key={method} className="flex items-center justify-between py-2 px-3 bg-surface-container/30 border border-outline-variant/10 rounded-xl text-xs font-bold uppercase tracking-wider text-on-surface">
-                    <span>{method}</span>
+                    <span className="truncate pr-2">{method}</span>
                     <button
                       onClick={() => {
                         onDeletePaymentMethod(method);
                         toast.info(`Método "${method}" eliminado.`);
                       }}
-                      className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer"
+                      className="text-on-surface-variant/40 hover:text-terracotta min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-terracotta/10 rounded-full transition-all cursor-pointer shrink-0"
+                      title={`Eliminar método ${method}`}
+                      aria-label={`Eliminar método ${method}`}
                     >
-                      <Trash2 size={12} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 ))}
@@ -640,203 +816,9 @@ export const Ajustes: React.FC<AjustesProps> = ({
             </div>
           </div>
 
-          {/* Copias de Seguridad y Respaldo Integral */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-serif text-sm font-black text-primary flex items-center gap-2">
-                <Database size={16} /> Respaldo y Protección de Datos
-              </h3>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-primary/80 bg-primary/10 px-2 py-0.5 rounded-full">
-                JSON Portátil
-              </span>
-            </div>
-            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Exporta una copia completa de todas las clientas, citas, finanzas y fotos para resguardo externo o migración.
-            </p>
-            <div className="wavy-divider opacity-30"></div>
-
-            {/* Storage Gauge */}
-            <div className="bg-surface-container-low p-3 rounded-2xl border border-outline-variant/20 space-y-1.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-on-surface-variant font-medium flex items-center gap-1.5">
-                  <HardDrive size={13} className="text-primary" /> Uso de Almacenamiento Local
-                </span>
-                <span className="font-mono font-bold text-on-surface">
-                  {storageMetrics.usedKb} KB / ~5,000 KB ({storageMetrics.percentageOf5Mb}%)
-                </span>
-              </div>
-              <div className="w-full bg-outline-variant/30 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    storageMetrics.percentageOf5Mb > 75
-                      ? 'bg-terracotta'
-                      : storageMetrics.percentageOf5Mb > 40
-                      ? 'bg-amber-500'
-                      : 'bg-primary'
-                  }`}
-                  style={{ width: `${Math.max(storageMetrics.percentageOf5Mb, 4)}%` }}
-                ></div>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={handleExportBackup}
-                disabled={isExporting}
-                className="py-2.5 px-3 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-              >
-                <Download size={14} />
-                {isExporting ? 'Exportando...' : 'Descargar Backup'}
-              </button>
-
-              <label className="py-2.5 px-3 bg-surface-container-high text-primary border border-primary/20 hover:border-primary/40 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 text-center">
-                <Upload size={14} />
-                <span>Restaurar Backup</span>
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={handleSelectRestoreFile}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {/* Export Success Notification */}
-            {exportSuccess && (
-              <div className="p-2.5 bg-sage/10 text-sage border border-sage/20 rounded-xl text-xs flex items-center gap-2 font-medium animate-fadeIn">
-                <CheckCircle2 size={14} /> ¡Respaldo JSON descargado con éxito! Guárdalo en un lugar seguro.
-              </div>
-            )}
-
-            {/* Restore Success Notification */}
-            {restoreSuccess && (
-              <div className="p-2.5 bg-sage/10 text-sage border border-sage/20 rounded-xl text-xs flex items-center gap-2 font-medium animate-fadeIn">
-                <CheckCircle2 size={14} /> ¡Base de datos restaurada correctamente desde el respaldo!
-              </div>
-            )}
-
-            {/* Restore Error Notification */}
-            {restoreError && (
-              <div className="p-2.5 bg-terracotta/10 text-terracotta border border-terracotta/20 rounded-xl text-xs flex items-center gap-2 font-medium">
-                <AlertCircle size={14} className="shrink-0" /> {restoreError}
-              </div>
-            )}
-
-            {/* Restore Preview & Confirmation Dialog */}
-            {restoreCandidate && (
-              <div className="bg-surface-container/60 border-2 border-primary/30 p-4 rounded-2xl space-y-3 animate-fadeIn">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-primary flex items-center gap-1.5">
-                    <FileJson size={14} /> Confirmar Restauración de Respaldo
-                  </h4>
-                  <span className="text-[10px] text-on-surface-variant font-medium">
-                    {new Date(restoreCandidate.exportedAt).toLocaleDateString('es-ES')}
-                  </span>
-                </div>
-
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  Se encontró un archivo válido de <strong>{restoreCandidate.app}</strong> con el siguiente contenido:
-                </p>
-
-                <div className="grid grid-cols-3 gap-1.5 text-center">
-                  <div className="bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/15">
-                    <p className="text-sm font-black text-primary font-mono">{restoreCandidate.summary.clientsCount}</p>
-                    <p className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 font-semibold">Clientas</p>
-                  </div>
-                  <div className="bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/15">
-                    <p className="text-sm font-black text-primary font-mono">{restoreCandidate.summary.appointmentsCount}</p>
-                    <p className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 font-semibold">Citas</p>
-                  </div>
-                  <div className="bg-surface-container-lowest p-2 rounded-xl border border-outline-variant/15">
-                    <p className="text-sm font-black text-primary font-mono">{restoreCandidate.summary.movementsCount}</p>
-                    <p className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 font-semibold">Movimientos</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleConfirmRestore}
-                    className="flex-1 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/95 transition-all shadow-xs cursor-pointer"
-                  >
-                    Confirmar y Restaurar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRestoreCandidate(null)}
-                    className="py-2 px-3 border border-outline-variant/30 text-on-surface-variant text-xs font-semibold rounded-xl hover:bg-surface-container-high transition-all cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Architecture note */}
-            <div className="bg-surface-container/30 p-2.5 rounded-xl border border-outline-variant/15 flex items-start gap-2 text-[10px] text-on-surface-variant/75">
-              <ShieldCheck size={14} className="text-primary shrink-0 mt-0.5" />
-              <p className="leading-normal">
-                <strong>Mitigación de Pérdida de Datos:</strong> Los backups portátiles previenen pérdida de datos ante limpieza de navegador o cambio de equipo. En la siguiente etapa se conectará a base de datos relacional Cloud.
-              </p>
-            </div>
-          </div>
-
-          {/* Reset / Backup Card */}
-          <div className="bg-terracotta/5 border border-terracotta/20 p-6 rounded-3xl space-y-3.5">
-            <h4 className="text-xs font-bold text-terracotta flex items-center gap-1.5 uppercase tracking-wider">
-              <ShieldAlert size={15} /> Zona de Mantenimiento
-            </h4>
-            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Esta herramienta restablecerá toda la base de datos de <strong>Beauty Space</strong> a sus valores semilla predeterminados. Esta acción es irreversible.
-            </p>
-            <button
-              onClick={() => setShowResetConfirm(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-terracotta/35 text-xs text-terracotta font-bold hover:bg-terracotta/10 transition-all cursor-pointer"
-            >
-              <RefreshCw size={13} /> Restablecer Base de Datos
-            </button>
-          </div>
-
         </div>
 
       </div>
-
-      {/* CONFIRMATION MODAL: RESTABLECER BASE DE DATOS */}
-      <Modal
-        isOpen={showResetConfirm}
-        onClose={() => setShowResetConfirm(false)}
-        icon={<ShieldAlert size={18} className="text-terracotta" />}
-        title="¿Restablecer Base de Datos?"
-        subtitle="Acción irreversible de mantenimiento"
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-on-surface-variant/80 leading-relaxed">
-            ¿Estás segura de que deseas eliminar todas las citas, clientes y movimientos de finanzas registrados para restablecer las semillas iniciales?
-          </p>
-          <div className="flex gap-2.5 justify-end pt-1">
-            <button
-              type="button"
-              onClick={() => setShowResetConfirm(false)}
-              className="flex-1 py-2.5 px-4 bg-surface-container-high rounded-xl text-xs font-bold text-on-surface hover:bg-surface-container-high/80 active:scale-95 transition-all cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onResetDatabase();
-                setShowResetConfirm(false);
-              }}
-              className="flex-1 py-2.5 px-4 bg-terracotta text-white rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 active:scale-95 transition-all cursor-pointer"
-            >
-              Sí, Restablecer
-            </button>
-          </div>
-        </div>
-      </Modal>
 
     </div>
   );

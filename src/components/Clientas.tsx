@@ -724,17 +724,17 @@ export const Clientas: React.FC<ClientasProps> = ({
                 placeholder="Buscar clienta por nombre, teléfono o email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-surface-container-lowest text-xs py-2.5 pl-10 pr-4 rounded-full border border-outline-variant/40 focus:outline-none focus:border-primary placeholder:text-on-surface-variant/40 font-semibold"
+                className="w-full bg-surface-container-lowest text-base sm:text-xs min-h-[44px] py-2.5 pl-10 pr-4 rounded-full border border-outline-variant/40 focus:outline-none focus:border-primary placeholder:text-on-surface-variant/40 font-semibold"
               />
             </div>
             
             {/* Segment Selector & New Client Button */}
             <div className="flex flex-wrap items-center gap-2">
               {/* Segment Toggles */}
-              <div className="flex bg-surface-container-low p-1 rounded-full border border-outline-variant/20 overflow-x-auto">
+              <div className="flex bg-surface-container-low p-1 rounded-full border border-outline-variant/20 overflow-x-auto max-w-full">
                 <button
                   onClick={() => setActiveSegment('all')}
-                  className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
+                  className={`px-3.5 py-2 sm:py-1.5 rounded-full text-[10px] sm:text-[10px] font-black uppercase tracking-wider transition-all min-h-[38px] flex items-center cursor-pointer ${
                     activeSegment === 'all' ? 'bg-primary text-white shadow-xs' : 'text-on-surface-variant/80 hover:text-primary'
                   }`}
                 >
@@ -742,7 +742,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                 </button>
                 <button
                   onClick={() => setActiveSegment('new')}
-                  className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
+                  className={`px-3.5 py-2 sm:py-1.5 rounded-full text-[10px] sm:text-[10px] font-black uppercase tracking-wider transition-all min-h-[38px] flex items-center cursor-pointer ${
                     activeSegment === 'new' ? 'bg-primary text-white shadow-xs' : 'text-on-surface-variant/80 hover:text-primary'
                   }`}
                 >
@@ -750,7 +750,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                 </button>
                 <button
                   onClick={() => setActiveSegment('frequent')}
-                  className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
+                  className={`px-3.5 py-2 sm:py-1.5 rounded-full text-[10px] sm:text-[10px] font-black uppercase tracking-wider transition-all min-h-[38px] flex items-center cursor-pointer ${
                     activeSegment === 'frequent' ? 'bg-primary text-white shadow-xs' : 'text-on-surface-variant/80 hover:text-primary'
                   }`}
                 >
@@ -758,7 +758,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                 </button>
                 <button
                   onClick={() => setActiveSegment('inactive')}
-                  className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
+                  className={`px-3.5 py-2 sm:py-1.5 rounded-full text-[10px] sm:text-[10px] font-black uppercase tracking-wider transition-all min-h-[38px] flex items-center cursor-pointer ${
                     activeSegment === 'inactive' ? 'bg-primary text-white shadow-xs' : 'text-on-surface-variant/80 hover:text-primary'
                   }`}
                 >
@@ -768,7 +768,7 @@ export const Clientas: React.FC<ClientasProps> = ({
 
               <button
                 onClick={() => setShowAddForm(!showAddForm)}
-                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-white rounded-full text-xs font-bold transition-all hover:bg-primary/95 editorial-shadow shrink-0"
+                className="bg-primary hover:bg-primary/95 text-white px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-2 editorial-shadow transition-all min-h-[44px] cursor-pointer"
               >
                 <Plus size={16} /> {showAddForm ? 'Ocultar Alta' : 'Nueva Clienta'}
               </button>
@@ -967,7 +967,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                     placeholder="Ej. Valeria Castillo"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    className="w-full bg-surface-container-low text-xs py-2.5 px-4 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold text-on-surface"
+                    className="w-full bg-surface-container-low text-base sm:text-xs min-h-[44px] py-2.5 px-4 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold text-on-surface"
                     required
                   />
                 </div>
@@ -980,7 +980,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                       placeholder="+52 55 ..."
                       value={newPhone}
                       onChange={(e) => setNewPhone(e.target.value)}
-                      className="w-full bg-surface-container-low text-xs py-2.5 px-4 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold text-on-surface"
+                      className="w-full bg-surface-container-low text-base sm:text-xs min-h-[44px] py-2.5 px-4 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold text-on-surface"
                       required
                     />
                   </div>
@@ -992,7 +992,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                       placeholder="valeria@example.com"
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}
-                      className="w-full bg-surface-container-low text-xs py-2.5 px-4 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold text-on-surface"
+                      className="w-full bg-surface-container-low text-base sm:text-xs min-h-[44px] py-2.5 px-4 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold text-on-surface"
                     />
                   </div>
                 </div>
@@ -1004,7 +1004,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                     value={newNotes}
                     onChange={(e) => setNewNotes(e.target.value)}
                     rows={3}
-                    className="w-full bg-surface-container-low text-xs py-2.5 px-4 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold text-on-surface"
+                    className="w-full bg-surface-container-low text-base sm:text-xs p-3.5 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold text-on-surface"
                   />
                 </div>
 
@@ -1016,13 +1016,13 @@ export const Clientas: React.FC<ClientasProps> = ({
                       setCustomPhoto(null);
                       setFormError('');
                     }}
-                    className="flex-1 bg-surface-container-high text-on-surface text-xs font-bold py-3 rounded-xl transition-all cursor-pointer"
+                    className="flex-1 bg-surface-container-high text-on-surface text-xs font-bold py-3 rounded-xl transition-all min-h-[44px] cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 bg-primary text-white text-xs font-bold py-3 rounded-xl transition-all editorial-shadow cursor-pointer"
+                    className="flex-1 bg-primary text-white text-xs font-bold py-3 rounded-xl transition-all min-h-[44px] editorial-shadow cursor-pointer"
                   >
                     Registrar Ficha
                   </button>
@@ -1032,7 +1032,7 @@ export const Clientas: React.FC<ClientasProps> = ({
           )}
 
           {/* PORTRAIT CARDS MASTER LIST */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 @container">
             {filteredClients.slice(0, visibleLimit).map((c) => {
               // Calculate visits count
               const clientAppts = appointments.filter(a => a.clientId === c.id);
