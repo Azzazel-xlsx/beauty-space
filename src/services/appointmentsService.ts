@@ -16,6 +16,7 @@ const mapRow = (row: any): Appointment => ({
   priceCharged: Number(row.price_charged) || 0,
   cancelReason: row.cancel_reason ?? '',
   rescheduledToId: row.rescheduled_to_id ?? undefined,
+  reminderSentAt: row.reminder_sent_at ?? undefined,
   extras: (row.appointment_extras ?? []).map((e: any) => ({
     extraId: e.extra_id ?? e.id,
     name: e.name,

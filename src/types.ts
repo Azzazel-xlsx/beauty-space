@@ -64,6 +64,7 @@ export interface Appointment {
   priceCharged: number;
   cancelReason?: string;
   rescheduledToId?: string; // Links to new appointment if rescheduled
+  reminderSentAt?: string;
 }
 
 export interface FinancialMovement {

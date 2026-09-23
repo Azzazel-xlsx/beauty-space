@@ -344,4 +344,80 @@ CREATE OR REPLACE VIEW public_admin_profile AS
 GRANT SELECT ON public_admin_profile TO anon;
 GRANT SELECT ON public_admin_profile TO authenticated;
 
+-- =============================================================================
+-- 11. SISTEMA DE NOTIFICACIONES PUSH EN SEGUNDO PLANO (Web Push + VAPID)
+-- =============================================================================
+
+-- Tabla de suscripciones Push por dispositivo y usuario
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    endpoint TEXT UNIQUE NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth_key TEXT NOT NULL,
+    device_label TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "own subscriptions" ON push_subscriptions
+    FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Control de recordatorio de citas 1 hora antes
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_appointments_reminder ON appointments (date, status, reminder_sent_at);
+
+-- Eventos de cambios en citas (cancelaciones y reprogramaciones)
+CREATE TABLE IF NOT EXISTS appointment_change_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    appointment_id UUID REFERENCES appointments(id) ON DELETE CASCADE NOT NULL,
+    client_name TEXT NOT NULL DEFAULT '',
+    service_name TEXT NOT NULL DEFAULT '',
+    change_type TEXT NOT NULL CHECK (change_type IN ('cancelled', 'rescheduled')),
+    old_date DATE,
+    old_time TEXT,
+    new_date DATE,
+    new_time TEXT,
+    processed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE appointment_change_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "authenticated_access_change_events" ON appointment_change_events
+    FOR ALL USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+
+-- Trigger para detectar cancelaciones y reprogramaciones automáticamente
+CREATE OR REPLACE FUNCTION fn_detect_appointment_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_client_name TEXT := '';
+    v_service_name TEXT := '';
+BEGIN
+    SELECT COALESCE(name, 'Clienta') INTO v_client_name FROM clients WHERE id = NEW.client_id;
+    SELECT COALESCE(name, 'Servicio') INTO v_service_name FROM services WHERE id = NEW.service_id;
+
+    IF (NEW.status = 'cancelled' AND (OLD.status IS NULL OR OLD.status <> 'cancelled')) THEN
+        INSERT INTO appointment_change_events (
+            appointment_id, client_name, service_name, change_type, old_date, old_time
+        ) VALUES (
+            NEW.id, v_client_name, v_service_name, 'cancelled', OLD.date, OLD.time
+        );
+    ELSIF (NEW.status <> 'cancelled') AND (NEW.date <> OLD.date OR NEW.time <> OLD.time) THEN
+        INSERT INTO appointment_change_events (
+            appointment_id, client_name, service_name, change_type, old_date, old_time, new_date, new_time
+        ) VALUES (
+            NEW.id, v_client_name, v_service_name, 'rescheduled', OLD.date, OLD.time, NEW.date, NEW.time
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_appointment_change ON appointments;
+CREATE TRIGGER trg_appointment_change
+AFTER UPDATE ON appointments
+FOR EACH ROW EXECUTE FUNCTION fn_detect_appointment_change();
+
+
 

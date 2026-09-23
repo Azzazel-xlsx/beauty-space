@@ -15,12 +15,16 @@ import {
   LogOut,
   Eye,
   EyeOff,
-  RefreshCw
+  RefreshCw,
+  BellRing,
+  BellOff,
+  Smartphone
 } from 'lucide-react';
 import { formatMoney } from '../utils/formatters';
 import { useToast } from './Toast';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { ImageCropModal } from './ui/ImageCropModal';
+import { usePushSubscription } from '../hooks/usePushSubscription';
 
 interface AjustesProps {
   priceChanges: PriceChangeEvent[];
@@ -71,6 +75,45 @@ export const Ajustes: React.FC<AjustesProps> = ({
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
+
+  // Web Push Subscription Hook
+  const [testingPush, setTestingPush] = useState(false);
+  const {
+    isSupported: isPushSupported,
+    permission: pushPermission,
+    isSubscribed: isPushSubscribed,
+    loading: pushLoading,
+    error: pushError,
+    subscribe: subscribePush,
+    unsubscribe: unsubscribePush,
+    sendTestNotification
+  } = usePushSubscription();
+
+  const handleTogglePush = async () => {
+    if (isPushSubscribed) {
+      const ok = await unsubscribePush();
+      if (ok) toast.success('Notificaciones desactivadas en este dispositivo.');
+    } else {
+      const ok = await subscribePush();
+      if (ok) toast.success('¡Notificaciones push activadas correctamente!');
+    }
+  };
+
+  const handleSendTestPush = async () => {
+    setTestingPush(true);
+    try {
+      const res = await sendTestNotification();
+      toast.success(
+        res.via === 'edge-function'
+          ? '¡Notificación enviada desde la nube de Supabase!'
+          : '¡Notificación enviada al dispositivo!'
+      );
+    } catch (err: any) {
+      toast.error(`Error enviando notificación: ${err?.message || 'Fallo desconocido'}`);
+    } finally {
+      setTestingPush(false);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -530,8 +573,127 @@ export const Ajustes: React.FC<AjustesProps> = ({
 
         </div>
 
-        {/* COLUMNA 2: Auditoría de Tarifas */}
+        {/* COLUMNA 2: Notificaciones Push y Auditoría de Tarifas */}
         <div className="space-y-6">
+
+          {/* TARJETA: Notificaciones Push en Segundo Plano */}
+          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
+                <BellRing size={18} /> Notificaciones Push
+              </h2>
+              <span
+                className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
+                  isPushSubscribed
+                    ? 'text-sage bg-sage/10 border border-sage/20'
+                    : 'text-on-surface-variant/70 bg-surface-container'
+                }`}
+              >
+                {isPushSubscribed ? <CheckCircle2 size={10} /> : <BellOff size={10} />}
+                {isPushSubscribed ? 'Activas' : 'Inactivas'}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
+              Recibe avisos Web Push en segundo plano para citas próximas (1h antes) y cambios de agenda aunque la aplicación esté cerrada.
+            </p>
+
+            <div className="wavy-divider opacity-30"></div>
+
+            {/* Switch Toggle */}
+            <div className="bg-surface-container/35 p-4 rounded-2xl border border-outline-variant/15 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${
+                    isPushSubscribed ? 'bg-primary/10 text-primary' : 'bg-surface-container-high text-on-surface-variant/60'
+                  }`}
+                >
+                  <Smartphone size={18} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-on-surface">
+                    Activar notificaciones en este dispositivo
+                  </p>
+                  <p className="text-[10px] text-on-surface-variant/65">
+                    {!isPushSupported
+                      ? 'Navegador sin soporte de Web Push API'
+                      : pushPermission === 'denied'
+                      ? 'Permiso bloqueado en los ajustes del navegador'
+                      : isPushSubscribed
+                      ? 'Dispositivo vinculado y suscrito con éxito'
+                      : 'Presiona el interruptor para recibir recordatorios'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isPushSubscribed}
+                disabled={!isPushSupported || pushLoading || pushPermission === 'denied'}
+                onClick={handleTogglePush}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isPushSubscribed ? 'bg-primary' : 'bg-surface-container-highest'
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    isPushSubscribed ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {pushError && (
+              <div className="bg-terracotta/10 border border-terracotta/20 text-terracotta p-3 rounded-xl text-xs flex items-center gap-2">
+                <ShieldAlert size={14} className="shrink-0" />
+                <span>{pushError}</span>
+              </div>
+            )}
+
+            {/* Características */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="bg-surface-container-low/50 p-2.5 rounded-xl border border-outline-variant/15 flex items-start gap-2">
+                <span className="text-primary font-bold text-sm shrink-0">⏰</span>
+                <div>
+                  <strong className="block text-[11px] font-bold text-on-surface">Citas próximas (1 hora antes)</strong>
+                  <span className="text-[10px] text-on-surface-variant/70 leading-tight block">
+                    Aviso automático para preparar cabina y materiales.
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-surface-container-low/50 p-2.5 rounded-xl border border-outline-variant/15 flex items-start gap-2">
+                <span className="text-primary font-bold text-sm shrink-0">📅</span>
+                <div>
+                  <strong className="block text-[11px] font-bold text-on-surface">Reprogramadas / Canceladas</strong>
+                  <span className="text-[10px] text-on-surface-variant/70 leading-tight block">
+                    Alertas inmediatas si la clienta cancela o cambia de hora.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Botón de Prueba y Pie Técnico */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-outline-variant/15">
+              <button
+                type="button"
+                onClick={handleSendTestPush}
+                disabled={!isPushSubscribed || testingPush}
+                className="py-2 px-3.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[40px]"
+              >
+                <BellRing size={13} className={testingPush ? 'animate-bounce' : ''} />
+                {testingPush ? 'Enviando prueba...' : 'Enviar Notificación de Prueba'}
+              </button>
+
+              <div className="text-right">
+                <span className="text-[10px] text-on-surface-variant/50 block font-mono">
+                  Service Worker: /sw.js • VAPID Web Push
+                </span>
+              </div>
+            </div>
+          </div>
 
           {/* TARJETA: Auditoría Completa de Precios */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
