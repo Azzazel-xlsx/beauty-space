@@ -6,6 +6,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import { formatMoney } from '../utils/formatters';
 import { useToast } from './Toast';
 import { supabase } from '../lib/supabaseClient';
+import { SelectField } from './ui/SelectField';
 
 interface ClientasProps {
   clients: Client[];
@@ -100,7 +101,7 @@ export const Clientas: React.FC<ClientasProps> = ({
 
       const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
       setCustomPhoto(publicUrl);
-      toast.success('¡Foto subida con éxito a Supabase Storage!');
+      toast.success('¡Foto subida con éxito!');
     } catch (err) {
       console.error('Error procesando imagen de clienta:', err);
       setFormError('Error al subir la foto, intenta de nuevo');
@@ -159,7 +160,6 @@ export const Clientas: React.FC<ClientasProps> = ({
       if (onUpdateClientPhoto) {
         onUpdateClientPhoto(clientId, publicUrl);
       }
-      toast.success('¡Foto de clienta actualizada con éxito!');
     } catch (err) {
       console.error('Error al subir foto de clienta:', err);
       toast.error('Error al subir la foto, intenta de nuevo');
@@ -302,8 +302,6 @@ export const Clientas: React.FC<ClientasProps> = ({
       photoUrl: customPhoto || PHOTO_PRESETS[avatarIndex]
     });
 
-    toast.success(`Clienta "${newName.trim()}" registrada con éxito.`);
-
     // Reset Form
     setNewName('');
     setNewPhone('');
@@ -320,7 +318,6 @@ export const Clientas: React.FC<ClientasProps> = ({
     if (selectedClientId) {
       onUpdateClientNotes(selectedClientId, tempNotes);
       setIsEditingNotes(false);
-      toast.success('¡Comentario personalizado guardado con éxito!');
     }
   };
 
@@ -350,7 +347,6 @@ export const Clientas: React.FC<ClientasProps> = ({
       setNewSpecialPrice('');
       setShowAddSpecialPriceForm(false);
       setSpecialPriceError('');
-      toast.success('¡Tarifa especial guardada exitosamente!');
     }
   };
 
@@ -389,11 +385,17 @@ export const Clientas: React.FC<ClientasProps> = ({
           {/* Tarjeta de Identificación Básica de la Clienta */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-3xl p-6 hard-shadow flex flex-col sm:flex-row items-center sm:items-start gap-6">
             <div className="relative shrink-0 group">
-              <img
-                src={selectedClient.photoUrl}
-                alt={selectedClient.name}
-                className="w-24 h-24 rounded-full object-cover border-2 border-primary/20 p-1 bg-white shadow-xs"
-              />
+              {selectedClient.photoUrl && selectedClient.photoUrl.trim() !== '' ? (
+                <img
+                  src={selectedClient.photoUrl}
+                  alt={selectedClient.name}
+                  className="w-24 h-24 rounded-full object-cover border-2 border-primary/20 p-1 bg-white shadow-xs"
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center font-serif text-3xl font-bold text-primary shadow-xs">
+                  {selectedClient.name ? selectedClient.name.charAt(0).toUpperCase() : 'C'}
+                </div>
+              )}
               {isUploadingDetailPhoto && (
                 <div className="absolute inset-0 rounded-full bg-black/60 flex flex-col items-center justify-center text-white text-[9px] font-bold">
                   <span className="animate-spin text-sm mb-0.5">◌</span>
@@ -420,7 +422,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                     onClick={() => detailFileInputRef.current?.click()}
                     disabled={isUploadingDetailPhoto}
                     className="absolute top-0 right-0 p-1 bg-primary text-white rounded-full hover:scale-110 transition-transform shadow-xs cursor-pointer border border-white"
-                    title="Actualizar foto en Supabase Storage"
+                    title="Actualizar foto"
                   >
                     <Camera size={11} />
                   </button>
@@ -678,18 +680,17 @@ export const Clientas: React.FC<ClientasProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Selector de servicio */}
                   <div className="space-y-1 sm:col-span-1">
-                    <label className="block text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">Servicio</label>
-                    <select
+                    <SelectField
+                      label="Servicio"
                       value={newSpecialServiceId}
-                      onChange={(e) => setNewSpecialServiceId(e.target.value)}
-                      className="w-full bg-surface-container-lowest text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 font-semibold text-on-surface focus:outline-none focus:border-primary"
-                    >
-                      {services.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} (Base: {formatMoney(s.basePrice)})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val) => setNewSpecialServiceId(val)}
+                      options={services.map((s) => ({
+                        value: s.id,
+                        label: `${s.name} (Base: ${formatMoney(s.basePrice)})`
+                      }))}
+                      variant="sheet"
+                      triggerClassName="w-full bg-surface-container-lowest text-xs py-2 px-3 rounded-xl border border-outline-variant/30 font-semibold text-on-surface focus:outline-none focus:border-primary flex items-center justify-between gap-2 min-h-[38px] cursor-pointer"
+                    />
                   </div>
 
                   {/* Input de precio especial */}
@@ -708,17 +709,19 @@ export const Clientas: React.FC<ClientasProps> = ({
 
                   {/* Selector de etiqueta de grupo */}
                   <div className="space-y-1">
-                    <label className="block text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">Etiqueta / Motivo</label>
-                    <select
+                    <SelectField
+                      label="Etiqueta / Motivo"
                       value={newSpecialGroupLabel}
-                      onChange={(e) => setNewSpecialGroupLabel(e.target.value)}
-                      className="w-full bg-surface-container-lowest text-xs py-2.5 px-3 rounded-xl border border-outline-variant/30 font-semibold text-on-surface focus:outline-none focus:border-primary"
-                    >
-                      <option value="CLIENTA FRECUENTE">CLIENTA FRECUENTE</option>
-                      <option value="VIP DIAMANTE">VIP DIAMANTE</option>
-                      <option value="AMIGA & FAMILIA">AMIGA & FAMILIA</option>
-                      <option value="TARIFA ESPECIAL">TARIFA ESPECIAL</option>
-                    </select>
+                      onChange={(val) => setNewSpecialGroupLabel(val)}
+                      options={[
+                        { value: 'CLIENTA FRECUENTE', label: 'CLIENTA FRECUENTE' },
+                        { value: 'VIP DIAMANTE', label: 'VIP DIAMANTE' },
+                        { value: 'AMIGA & FAMILIA', label: 'AMIGA & FAMILIA' },
+                        { value: 'TARIFA ESPECIAL', label: 'TARIFA ESPECIAL' },
+                      ]}
+                      variant="sheet"
+                      triggerClassName="w-full bg-surface-container-lowest text-xs py-2 px-3 rounded-xl border border-outline-variant/30 font-semibold text-on-surface focus:outline-none focus:border-primary flex items-center justify-between gap-2 min-h-[38px] cursor-pointer"
+                    />
                   </div>
                 </div>
 
@@ -782,7 +785,6 @@ export const Clientas: React.FC<ClientasProps> = ({
                             type="button"
                             onClick={() => {
                               onDeleteSpecialPrice(sp.id);
-                              toast.info('Tarifa especial eliminada.');
                             }}
                             className="p-2 text-on-surface-variant/40 hover:text-terracotta hover:bg-terracotta/10 rounded-full transition-colors cursor-pointer"
                             title="Eliminar tarifa especial"
@@ -943,11 +945,16 @@ export const Clientas: React.FC<ClientasProps> = ({
                           }
                         }}
                       >
-                        <img
-                          src={customPhoto || PHOTO_PRESETS[avatarIndex]}
-                          alt="Vista previa de clienta"
-                          className="w-full h-full object-cover rounded-full transition-transform duration-300 group-hover:scale-105"
-                        />
+                        {(() => {
+                          const previewSrc = customPhoto?.trim() || PHOTO_PRESETS[avatarIndex] || PHOTO_PRESETS[0];
+                          return previewSrc ? (
+                            <img
+                              src={previewSrc}
+                              alt="Vista previa de clienta"
+                              className="w-full h-full object-cover rounded-full transition-transform duration-300 group-hover:scale-105"
+                            />
+                          ) : null;
+                        })()}
 
                         {/* Interactive overlay on hover/tap */}
                         <div className="absolute inset-0 rounded-full bg-black/45 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity duration-200">
@@ -970,7 +977,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploadingPhoto}
                         className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center shadow-md border-2 border-white hover:scale-110 transition-transform cursor-pointer disabled:opacity-60"
-                        title="Subir foto a Supabase Storage"
+                        title="Subir foto"
                         aria-label="Subir foto desde dispositivo"
                       >
                         <Camera size={13} />
@@ -985,8 +992,8 @@ export const Clientas: React.FC<ClientasProps> = ({
                         </p>
                         <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
                           {customPhoto
-                            ? 'La foto se subió a Supabase Storage y se mostrará en su ficha y citas.'
-                            : 'Puedes subir una foto real a Supabase Storage o seleccionar un retrato ilustrado de referencia como placeholder.'}
+                            ? 'La foto se guardó en la nube y se mostrará en su ficha y citas.'
+                            : 'Puedes subir una foto real o seleccionar un retrato ilustrado de referencia como placeholder.'}
                         </p>
                       </div>
 
@@ -998,7 +1005,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-all shadow-xs cursor-pointer disabled:opacity-60"
                         >
                           <Upload size={13} />
-                          {customPhoto ? 'Cambiar foto en Supabase' : 'Subir foto a Supabase'}
+                          {customPhoto ? 'Cambiar foto' : 'Subir foto'}
                         </button>
 
                         {customPhoto && (
@@ -1152,11 +1159,17 @@ export const Clientas: React.FC<ClientasProps> = ({
                   )}
 
                   <div className="flex gap-4 items-center pr-6">
-                    <img
-                      src={c.photoUrl}
-                      alt={c.name}
-                      className="w-14 h-14 rounded-full object-cover border-2 border-primary/10 shrink-0"
-                    />
+                    {c.photoUrl && c.photoUrl.trim() !== '' ? (
+                      <img
+                        src={c.photoUrl}
+                        alt={c.name}
+                        className="w-14 h-14 rounded-full object-cover border-2 border-primary/10 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 rounded-full bg-primary/10 border-2 border-primary/10 flex items-center justify-center font-serif text-lg font-bold text-primary shrink-0">
+                        {c.name ? c.name.charAt(0).toUpperCase() : 'C'}
+                      </div>
+                    )}
                     <div className="space-y-0.5 min-w-0 flex-1">
                       <h4 className="font-serif text-sm font-black text-on-surface tracking-wide truncate">{c.name}</h4>
                       <p className="text-[10px] text-on-surface-variant/60 font-bold">{c.phone}</p>
@@ -1244,13 +1257,11 @@ export const Clientas: React.FC<ClientasProps> = ({
                 onClick={() => {
                   if (onDeleteClient && clientToDelete) {
                     const idToDelete = clientToDelete.id;
-                    const clientName = clientToDelete.name;
                     onDeleteClient(idToDelete);
                     if (selectedClientId === idToDelete) {
                       setSelectedClientId(null);
                     }
                     setClientToDelete(null);
-                    toast.info(`Ficha de "${clientName}" eliminada.`);
                   }
                 }}
                 className="py-2.5 px-4 rounded-xl bg-terracotta text-white text-xs font-bold hover:bg-terracotta/90 transition-all shadow-xs cursor-pointer"

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Coins, Calendar, Users, Sparkles, Sparkle, Menu, X, Settings, LogOut } from 'lucide-react';
+import { DEFAULT_ADMIN_PHOTO } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -81,7 +82,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         <div className="mt-auto pt-6 border-t border-outline-variant/30 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <img
-              src={adminProfile?.photoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr"}
+              src={adminProfile?.photoUrl?.trim() || DEFAULT_ADMIN_PHOTO}
               alt="Studio Administrator"
               className="w-10 h-10 rounded-full object-cover border border-primary/20 shrink-0"
             />
@@ -157,7 +158,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
             <div className="flex items-center justify-between gap-3 px-2">
               <div className="flex items-center gap-3 min-w-0">
                 <img
-                  src={adminProfile?.photoUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuBY-F9jrf6P_SkfHeHl51GzEIYfoydwPR8G2qCfRsheEg3NJPoq6fpSUdN1z4SZ1z8wjvQd9f6WsL9bsSGKXmKBMPhouu5Rr-NfHjOTXpcmEFA7v7oK4qJ-Roi0nmMUvJFNuTCRlijPw1FGIktp03sNiBF9R2uqBTyF6LygFvW5E8tUmF6ErSN6P0Qo7c_300bb-Gaagy8kYv16HiUPE6wnYUE37ExXB09alovCjyl0VcIDmWemT2Pr"}
+                  src={adminProfile?.photoUrl?.trim() || DEFAULT_ADMIN_PHOTO}
                   alt="Studio Administrator"
                   className="w-8 h-8 rounded-full object-cover border border-primary/20 shrink-0"
                 />

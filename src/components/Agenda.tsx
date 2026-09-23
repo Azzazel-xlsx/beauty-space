@@ -9,6 +9,7 @@ import { generateId } from '../utils/id';
 import { formatMoney } from '../utils/formatters';
 import { Modal } from './Modal';
 import { AppointmentDetailModal } from './AppointmentDetailModal';
+import { SelectField } from './ui/SelectField';
 
 interface AgendaProps {
   appointments: Appointment[];
@@ -402,38 +403,29 @@ export const Agenda: React.FC<AgendaProps> = ({
       )}
 
       {/* Client Select */}
-      <div>
-        <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Clienta</label>
-        <select
-          value={selectedClient}
-          onChange={(e) => setSelectedClient(e.target.value)}
-          className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold text-on-surface truncate"
-          required
-        >
-          <option value="">Selecciona una clienta...</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-      </div>
+      <SelectField
+        label="Clienta"
+        value={selectedClient}
+        onChange={(val) => setSelectedClient(val)}
+        options={clients.map((c) => ({ value: c.id, label: c.name }))}
+        placeholder="Selecciona una clienta..."
+        variant="sheet"
+        required
+      />
 
       {/* Service Select */}
-      <div>
-        <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Tratamiento</label>
-        <select
-          value={selectedService}
-          onChange={(e) => handleServiceChange(e.target.value)}
-          className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold text-on-surface truncate"
-          required
-        >
-          <option value="">Selecciona el servicio...</option>
-          {services.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name} ({formatMoney(s.basePrice)}) — {formatDurationText(s.duration)}
-            </option>
-          ))}
-        </select>
-      </div>
+      <SelectField
+        label="Tratamiento"
+        value={selectedService}
+        onChange={(val) => handleServiceChange(val)}
+        options={services.map((s) => ({
+          value: s.id,
+          label: `${s.name} (${formatMoney(s.basePrice)}) — ${formatDurationText(s.duration)}`
+        }))}
+        placeholder="Selecciona el servicio..."
+        variant="sheet"
+        required
+      />
 
       {/* VIP alert banner */}
       {activeSpecialPrice !== null && (
@@ -462,22 +454,21 @@ export const Agenda: React.FC<AgendaProps> = ({
         </div>
 
         <div>
-          <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">
-            Duración (Auto)
-          </label>
-          <select
+          <SelectField
+            label="Duración (Auto)"
             value={apptDuration}
-            onChange={(e) => setApptDuration(e.target.value)}
-            className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold text-on-surface truncate"
-          >
-            <option value="30">30 min (Retiro)</option>
-            <option value="45">45 min</option>
-            <option value="60">1 h (Básica)</option>
-            <option value="90">1.5 h (Profunda)</option>
-            <option value="120">2 h (Gel X / Arte)</option>
-            <option value="150">2.5 h</option>
-            <option value="180">3 h (Full Editorial)</option>
-          </select>
+            onChange={(val) => setApptDuration(val)}
+            options={[
+              { value: '30', label: '30 min (Retiro)' },
+              { value: '45', label: '45 min' },
+              { value: '60', label: '1 h (Básica)' },
+              { value: '90', label: '1.5 h (Profunda)' },
+              { value: '120', label: '2 h (Gel X / Arte)' },
+              { value: '150', label: '2.5 h' },
+              { value: '180', label: '3 h (Full Editorial)' },
+            ]}
+            variant="dropdown"
+          />
         </div>
       </div>
 
@@ -828,11 +819,17 @@ export const Agenda: React.FC<AgendaProps> = ({
                     >
                       {/* Turn details */}
                       <div className="flex items-start gap-2.5">
-                        <img
-                          src={client.photoUrl}
-                          alt={client.name}
-                          className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-primary/20 p-0.5 bg-white shrink-0"
-                        />
+                        {client.photoUrl && client.photoUrl.trim() !== '' ? (
+                          <img
+                            src={client.photoUrl}
+                            alt={client.name}
+                            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-primary/20 p-0.5 bg-white shrink-0"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary shrink-0 text-xs">
+                            {client.name ? client.name.charAt(0).toUpperCase() : 'C'}
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0 space-y-0.5">
                           <div className="flex items-center justify-between gap-1.5">
                             <h5 className="text-xs font-bold text-on-surface truncate">{client.name}</h5>
@@ -1157,19 +1154,18 @@ export const Agenda: React.FC<AgendaProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Nueva Duración</label>
-                <select
-                  value={rescheduleDuration}
-                  onChange={(e) => setRescheduleDuration(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold"
-                >
-                  <option value="60">1 hora (Manicura básica)</option>
-                  <option value="90">1.5 horas (Manicura profunda)</option>
-                  <option value="120">2 horas (Gel X / Diseño avanzado)</option>
-                  <option value="180">3 horas (Full Editorial)</option>
-                </select>
-              </div>
+              <SelectField
+                label="Nueva Duración"
+                value={rescheduleDuration}
+                onChange={(val) => setRescheduleDuration(val)}
+                options={[
+                  { value: '60', label: '1 hora (Manicura básica)' },
+                  { value: '90', label: '1.5 horas (Manicura profunda)' },
+                  { value: '120', label: '2 horas (Gel X / Diseño avanzado)' },
+                  { value: '180', label: '3 horas (Full Editorial)' },
+                ]}
+                variant="dropdown"
+              />
 
               <div className="flex gap-2.5 justify-end pt-2">
                 <button
@@ -1234,18 +1230,17 @@ export const Agenda: React.FC<AgendaProps> = ({
               </div>
             </div>
 
-            <div>
-              <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Método de Pago</label>
-              <select
-                value={completionPaymentMethod}
-                onChange={(e) => setCompletionPaymentMethod(e.target.value)}
-                className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold uppercase tracking-wider text-on-surface"
-              >
-                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
-                <option value="EFECTIVO">Efectivo</option>
-                <option value="TARJETA">Tarjeta Débito/Crédito</option>
-              </select>
-            </div>
+            <SelectField
+              label="Método de Pago"
+              value={completionPaymentMethod}
+              onChange={(val) => setCompletionPaymentMethod(val)}
+              options={[
+                { value: 'TRANSFERENCIA', label: 'Transferencia Bancaria' },
+                { value: 'EFECTIVO', label: 'Efectivo' },
+                { value: 'TARJETA', label: 'Tarjeta Débito/Crédito' },
+              ]}
+              variant="dropdown"
+            />
 
             {/* Real-time Profit preview */}
             {(() => {

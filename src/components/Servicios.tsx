@@ -4,6 +4,7 @@ import { Plus, Sparkles, Tag, Calendar, ChevronDown, ChevronUp, Clock, Trash2, G
 import { formatMoney } from '../utils/formatters';
 import { Modal } from './Modal';
 import { useToast } from './Toast';
+import { SelectField } from './ui/SelectField';
 
 interface ServiciosProps {
   services: Service[];
@@ -83,8 +84,6 @@ export const Servicios: React.FC<ServiciosProps> = ({
       initialPrice: parsedPrice
     });
 
-    toast.success(`Servicio "${newName.trim()}" creado.`);
-
     // Reset Form
     setNewName('');
     setNewDesc('');
@@ -109,7 +108,6 @@ export const Servicios: React.FC<ServiciosProps> = ({
 
     const defaultReason = 'Actualización de tarifa por costes e inflación de insumos.';
     onUpdateServicePrice(serviceId, parsedPrice, updatePriceDate, updatePriceReason.trim() || defaultReason);
-    toast.success('Tarifa de servicio actualizada.');
     
     // Reset state
     setUpdatePriceVal('');
@@ -134,8 +132,6 @@ export const Servicios: React.FC<ServiciosProps> = ({
       initialPrice: price
     });
 
-    toast.success(`Diseño/extra "${newExtraName.trim()}" agregado.`);
-
     setNewExtraName('');
     setNewExtraPricePerNail('');
     setShowNewExtraFormForService(null);
@@ -151,7 +147,6 @@ export const Servicios: React.FC<ServiciosProps> = ({
 
     const defaultReason = 'Ajuste de tarifa de diseño adicional.';
     onUpdateExtraPrice(extraId, parsedPrice, updateExtraPriceDate, updateExtraPriceReason.trim() || defaultReason);
-    toast.success('Precio de extra actualizado.');
 
     setUpdatingExtraId(null);
     setUpdateExtraPriceVal('');
@@ -251,31 +246,31 @@ export const Servicios: React.FC<ServiciosProps> = ({
                   Duración Aproximada
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center gap-1.5 bg-surface-container-low px-3 py-1.5 rounded-xl border border-outline-variant/30">
-                    <select
-                      value={newDurationHours}
-                      onChange={(e) => setNewDurationHours(e.target.value)}
-                      className="bg-transparent text-xs font-bold text-on-surface focus:outline-none w-full"
-                    >
-                      <option value="0">0h</option>
-                      <option value="1">1h</option>
-                      <option value="2">2h</option>
-                      <option value="3">3h</option>
-                      <option value="4">4h</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-surface-container-low px-3 py-1.5 rounded-xl border border-outline-variant/30">
-                    <select
-                      value={newDurationMins}
-                      onChange={(e) => setNewDurationMins(e.target.value)}
-                      className="bg-transparent text-xs font-bold text-on-surface focus:outline-none w-full"
-                    >
-                      <option value="0">0 min</option>
-                      <option value="15">15 min</option>
-                      <option value="30">30 min</option>
-                      <option value="45">45 min</option>
-                    </select>
-                  </div>
+                  <SelectField
+                    value={newDurationHours}
+                    onChange={(val) => setNewDurationHours(val)}
+                    options={[
+                      { value: '0', label: '0h' },
+                      { value: '1', label: '1h' },
+                      { value: '2', label: '2h' },
+                      { value: '3', label: '3h' },
+                      { value: '4', label: '4h' },
+                    ]}
+                    variant="dropdown"
+                    triggerClassName="w-full bg-surface-container-low text-xs py-1.5 px-3 rounded-xl border border-outline-variant/30 font-bold text-on-surface flex items-center justify-between gap-1 cursor-pointer"
+                  />
+                  <SelectField
+                    value={newDurationMins}
+                    onChange={(val) => setNewDurationMins(val)}
+                    options={[
+                      { value: '0', label: '0 min' },
+                      { value: '15', label: '15 min' },
+                      { value: '30', label: '30 min' },
+                      { value: '45', label: '45 min' },
+                    ]}
+                    variant="dropdown"
+                    triggerClassName="w-full bg-surface-container-low text-xs py-1.5 px-3 rounded-xl border border-outline-variant/30 font-bold text-on-surface flex items-center justify-between gap-1 cursor-pointer"
+                  />
                 </div>
                 <span className="text-[10px] text-on-surface-variant/60 font-medium block mt-1">
                   Total: {parseInt(newDurationHours || '0') * 60 + parseInt(newDurationMins || '0')} minutos (se autocompleta al reservar)
@@ -728,10 +723,8 @@ export const Servicios: React.FC<ServiciosProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const extraName = extraToDelete.name;
                   onDeleteExtra(extraToDelete.id);
                   setExtraToDelete(null);
-                  toast.info(`Diseño/extra "${extraName}" eliminado.`);
                 }}
                 className="flex-1 py-2.5 px-4 bg-terracotta text-white rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 active:scale-95 transition-all cursor-pointer"
               >
@@ -778,10 +771,8 @@ export const Servicios: React.FC<ServiciosProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const sName = serviceToDelete.name;
                   onDeleteService(serviceToDelete.id);
                   setServiceToDelete(null);
-                  toast.info(`Servicio "${sName}" eliminado.`);
                 }}
                 className="flex-1 py-2.5 px-4 bg-terracotta text-white rounded-xl text-xs font-bold shadow-xs hover:bg-terracotta/95 active:scale-95 transition-all cursor-pointer"
               >

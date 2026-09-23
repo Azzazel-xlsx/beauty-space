@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Appointment, Client, Service, Extra, AppointmentExtra } from '../types';
 import { Modal } from './Modal';
+import { SelectField } from './ui/SelectField';
 import { Check, Plus, Minus, Trash2, Clock, MapPin, Sparkles, CheckCircle2, ChevronDown, DollarSign } from 'lucide-react';
 import { formatMoney } from '../utils/formatters';
 
@@ -169,7 +170,7 @@ export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
         {/* 1. CARD CLIENTA */}
         <div className="bg-surface-container-lowest border border-outline-variant/30 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between gap-3 hard-shadow">
           <div className="flex items-center gap-3 min-w-0">
-            {client?.photoUrl ? (
+            {client?.photoUrl && client.photoUrl.trim() !== '' ? (
               <img
                 src={client.photoUrl}
                 alt={client.name}
@@ -276,18 +277,16 @@ export const AppointmentDetailModal: React.FC<AppointmentDetailModalProps> = ({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  <select
+                  <SelectField
                     value={selectedCatalogExtraId}
-                    onChange={(e) => setSelectedCatalogExtraId(e.target.value)}
-                    className="w-full bg-surface-container-lowest text-xs py-2 px-3 rounded-lg border border-outline-variant/30 font-semibold text-on-surface focus:outline-none"
-                  >
-                    <option value="">Elige un extra o diseño...</option>
-                    {availableCatalogExtras.map((extra) => (
-                      <option key={extra.id} value={extra.id}>
-                        {extra.name} — {formatMoney(extra.pricePerNail)} / uña
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSelectedCatalogExtraId(val)}
+                    options={availableCatalogExtras.map((extra) => ({
+                      value: extra.id,
+                      label: `${extra.name} — ${formatMoney(extra.pricePerNail)} / uña`
+                    }))}
+                    placeholder="Elige un extra o diseño..."
+                    variant="sheet"
+                  />
 
                   <div className="flex items-center justify-between gap-3 pt-1">
                     <div className="flex items-center gap-2">

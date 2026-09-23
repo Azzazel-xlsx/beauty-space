@@ -36,6 +36,7 @@ import {
   MigrationProgressReport
 } from '../utils/migration';
 import { validateBackupPayload, downloadBackupSnapshot, CompleteBackupData } from '../utils/backup';
+import { ImageCropModal } from './ui/ImageCropModal';
 
 interface AjustesProps {
   priceChanges: PriceChangeEvent[];
@@ -108,6 +109,16 @@ export const Ajustes: React.FC<AjustesProps> = ({
   const [profilePhoto, setProfilePhoto] = useState(adminProfile?.photoUrl || '');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pendingImageSrc) {
+        URL.revokeObjectURL(pendingImageSrc);
+      }
+    };
+  }, [pendingImageSrc]);
 
   useEffect(() => {
     let isMounted = true;
@@ -193,7 +204,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
       setNewPassword('');
       setConfirmPassword('');
       setPasswordMessage({ text: '¡Contraseña actualizada con éxito!', type: 'success' });
-      toast.success('¡Contraseña actualizada en Supabase!');
+      toast.success('¡Contraseña actualizada!');
       setTimeout(() => setPasswordMessage(null), 4000);
     } catch (err: any) {
       const msg = err?.message || 'Error al actualizar contraseña.';
@@ -241,7 +252,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
     setTimeout(() => setProfileSuccess(false), 3000);
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -250,16 +261,23 @@ export const Ajustes: React.FC<AjustesProps> = ({
       return;
     }
 
+    const objectUrl = URL.createObjectURL(file);
+    setPendingImageSrc(objectUrl);
+    setCropModalOpen(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleCroppedUpload = async (blob: Blob) => {
     try {
       setUploadingPhoto(true);
 
       const { error } = await supabase.storage
         .from('salon-media')
-        .upload('admin/avatar.webp', file, { upsert: true });
+        .upload('admin/avatar.webp', blob, { upsert: true, contentType: 'image/webp' });
 
       if (error) {
-        console.error('Error subiendo foto de administradora a Supabase Storage:', error);
-        toast.error('Error al subir la foto a Supabase Storage.');
+        console.error('Error subiendo foto de administradora a Storage:', error);
+        toast.error('Error al subir la foto. Intenta de nuevo.');
         return;
       }
 
@@ -273,20 +291,32 @@ export const Ajustes: React.FC<AjustesProps> = ({
         name: profileName.trim(),
         photoUrl: publicUrl
       });
-      toast.success('¡Foto de perfil actualizada en Supabase Storage!');
+      toast.success('¡Foto de perfil actualizada!');
     } catch (err) {
       console.error('Error al actualizar foto de perfil:', err);
       toast.error('Error al actualizar la foto de perfil.');
     } finally {
       setUploadingPhoto(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (pendingImageSrc) {
+        URL.revokeObjectURL(pendingImageSrc);
+        setPendingImageSrc(null);
+      }
+      setCropModalOpen(false);
     }
+  };
+
+  const handleCancelCrop = () => {
+    if (pendingImageSrc) {
+      URL.revokeObjectURL(pendingImageSrc);
+      setPendingImageSrc(null);
+    }
+    setCropModalOpen(false);
   };
 
   // Migration handler
   const handleRunMigration = async () => {
     if (!isSupabaseConfigured()) {
-      toast.error('Supabase no está configurado. Revisa tus variables de entorno.');
+      toast.error('No se pudo conectar con el servidor. Revisa tu conexión.');
       return;
     }
 
@@ -300,7 +330,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
       });
       setMigrationReport(report);
       setLocalSummary(getLegacyLocalDataSummary());
-      toast.success('¡Datos locales migrados a Supabase exitosamente!');
+      toast.success('¡Datos locales sincronizados exitosamente!');
       onReloadData?.();
     } catch (err: any) {
       console.error('Error durante migración:', err);
@@ -312,7 +342,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
   };
 
   const handleClearLocalData = () => {
-    if (window.confirm('¿Segura que deseas eliminar los datos antiguos guardados en el navegador local? Esta acción no afectará los datos que ya están en Supabase.')) {
+    if (window.confirm('¿Segura que deseas eliminar los datos antiguos guardados en el navegador local? Esta acción no afectará los datos que ya están sincronizados en la nube.')) {
       clearLegacyLocalData();
       setLocalSummary(getLegacyLocalDataSummary());
       toast.success('Datos locales eliminados de este navegador.');
@@ -413,12 +443,9 @@ export const Ajustes: React.FC<AjustesProps> = ({
               <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
                 <User size={18} /> Perfil de Administradora
               </h2>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-sage bg-sage/10 px-2 py-0.5 rounded-full">
-                Supabase Storage
-              </span>
             </div>
             <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Personaliza tu nombre e imagen de cabecera. La foto se almacena en el bucket <code className="text-primary font-mono text-[10px] bg-primary/5 px-1 py-0.5 rounded">salon-media</code>.
+              Personaliza tu nombre e imagen de cabecera para tu perfil y cuenta.
             </p>
             <div className="wavy-divider opacity-30"></div>
 
@@ -432,7 +459,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <div className="relative group shrink-0">
                   <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-primary/20 bg-surface-container flex items-center justify-center shadow-xs">
-                    {profilePhoto ? (
+                    {profilePhoto && profilePhoto.trim() !== '' ? (
                       <img
                         src={profilePhoto}
                         alt={profileName}
@@ -483,7 +510,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                     disabled={uploadingPhoto}
                     className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <Camera size={12} /> {uploadingPhoto ? 'Subiendo imagen a Supabase Storage...' : 'Subir nueva foto de perfil'}
+                    <Camera size={12} /> {uploadingPhoto ? 'Subiendo imagen...' : 'Subir nueva foto de perfil'}
                   </button>
                 </div>
               </div>
@@ -497,11 +524,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
             </form>
           </div>
 
-          {/* TARJETA 2: Autenticación en la Nube (Supabase Auth) */}
+          {/* TARJETA 2: Autenticación en la Nube */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
-                <Lock size={18} /> Cuenta de Acceso (Supabase Auth)
+                <Lock size={18} /> Cuenta de Acceso
               </h2>
               <span className="text-[9px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full">
                 Nube Activa
@@ -622,7 +649,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   <span>Sin sesión activa en este momento</span>
                 </div>
                 <p className="text-[11px] text-on-surface-variant/75 leading-relaxed">
-                  Inicia sesión con tu correo y contraseña para mantener la sincronización con Supabase.
+                  Inicia sesión con tu correo y contraseña para mantener tus datos sincronizados en la nube.
                 </p>
               </div>
             )}
@@ -684,11 +711,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
               <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                 localSummary.totalItems > 0 ? 'text-amber-700 bg-amber-500/15' : 'text-sage bg-sage/10'
               }`}>
-                {localSummary.totalItems > 0 ? `${localSummary.totalItems} registros locales` : 'Todo en Supabase'}
+                {localSummary.totalItems > 0 ? `${localSummary.totalItems} registros locales` : 'Todo sincronizado'}
               </span>
             </div>
             <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Herramienta de transición: sube los datos que estaban guardados en la memoria de este navegador (celular o laptop) a Supabase.
+              Herramienta de transición: sube los datos que estaban guardados en la memoria de este navegador (celular o laptop) a la nube.
             </p>
             <div className="wavy-divider opacity-30"></div>
 
@@ -725,7 +752,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   <CheckCircle2 size={14} /> Sincronización finalizada:
                 </p>
                 <p className="text-[11px] text-on-surface-variant">
-                  {migrationReport.clientsMigrated} clientas, {migrationReport.servicesMigrated} servicios, {migrationReport.extrasMigrated} extras, {migrationReport.appointmentsMigrated} citas y {migrationReport.movementsMigrated} movimientos financieros subidos a Supabase.
+                  {migrationReport.clientsMigrated} clientas, {migrationReport.servicesMigrated} servicios, {migrationReport.extrasMigrated} extras, {migrationReport.appointmentsMigrated} citas y {migrationReport.movementsMigrated} movimientos financieros sincronizados en la nube.
                 </p>
                 {migrationReport.errors.length > 0 && (
                   <div className="text-terracotta text-[10px] mt-1 space-y-0.5">
@@ -745,7 +772,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                 className="flex-1 py-2.5 px-4 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer disabled:opacity-50"
               >
                 <CloudUpload size={14} />
-                {isMigrating ? 'Sincronizando...' : 'Subir datos locales a Supabase'}
+                {isMigrating ? 'Sincronizando...' : 'Sincronizar datos locales'}
               </button>
 
               {localSummary.totalItems > 0 && (
@@ -814,7 +841,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   <ClipboardList size={18} /> Auditoría de Precios
                 </h2>
                 <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/60 font-bold mt-0.5">
-                  Historial de cambios de tarifas en Supabase
+                  Historial de cambios de tarifas
                 </p>
               </div>
               <span className="text-[9px] font-black bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full uppercase">
@@ -875,7 +902,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
             <ClipboardList size={18} /> Catálogos del Estudio
           </h2>
           <p className="text-xs text-on-surface-variant">
-            Configuración global de opciones para el registro de finanzas y citas sincronizados en Supabase.
+            Configuración global de opciones para el registro de finanzas y citas sincronizados en la nube.
           </p>
         </div>
 
@@ -986,7 +1013,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
             <span>Zona de Mantenimiento</span>
           </div>
           <p className="text-xs text-on-surface-variant leading-relaxed">
-            Si deseas reiniciar los registros de prueba o comenzar desde un estado completamente limpio en Supabase.
+            Si deseas reiniciar los registros de prueba o comenzar desde un estado completamente limpio en la nube.
           </p>
           <button
             type="button"
@@ -1001,6 +1028,14 @@ export const Ajustes: React.FC<AjustesProps> = ({
             Restablecer Registros a Estado Limpio
           </button>
         </div>
+      )}
+      {/* Modal de Recorte y Encuadre de Foto */}
+      {cropModalOpen && pendingImageSrc && (
+        <ImageCropModal
+          imageSrc={pendingImageSrc}
+          onConfirm={handleCroppedUpload}
+          onCancel={handleCancelCrop}
+        />
       )}
     </div>
   );

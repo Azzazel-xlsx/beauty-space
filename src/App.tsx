@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { motion } from 'motion/react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Agenda } from './components/Agenda';
@@ -16,7 +17,8 @@ import {
   FinancialMovement,
   PriceChangeEvent,
   AppointmentExtra,
-  AdminProfile
+  AdminProfile,
+  DEFAULT_ADMIN_PHOTO
 } from './types';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
 import { clientsService } from './services/clientsService';
@@ -29,6 +31,8 @@ import { auditService } from './services/auditService';
 import { settingsService } from './services/settingsService';
 import { CompleteBackupData } from './utils/backup';
 import { Clock, AlertTriangle, RefreshCw } from 'lucide-react';
+
+const MIN_SYNC_SCREEN_MS = 1000;
 
 export default function App() {
   const toast = useToast();
@@ -57,12 +61,17 @@ export default function App() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [adminProfile, setAdminProfile] = useState<AdminProfile>({
     name: 'Valentina Moretti',
-    photoUrl: ''
+    photoUrl: DEFAULT_ADMIN_PHOTO
   });
 
   // Check Supabase session on mount & subscribe to auth changes
   useEffect(() => {
     let isMounted = true;
+
+    // Precarga del perfil público (nombre + foto) para el login, sin esperar sesión.
+    settingsService.getPublicAdminProfile().then((profile) => {
+      if (isMounted) setAdminProfile(profile);
+    });
 
     if (!isSupabaseConfigured()) {
       setIsAuthChecking(false);
@@ -76,7 +85,7 @@ export default function App() {
         setIsAuthChecking(false);
       }
     }).catch((err) => {
-      console.error('Error verificando sesión de Supabase:', err);
+      console.error('Error verificando sesión:', err);
       if (isMounted) {
         setIsAuthenticated(false);
         setIsAuthChecking(false);
@@ -96,11 +105,12 @@ export default function App() {
   }, []);
 
   // Fetch all business collections from Supabase
-  const loadAllData = useCallback(async () => {
+  const loadAllData = useCallback(async (retryAttempt = 0) => {
     if (!isSupabaseConfigured()) return;
 
     setIsLoadingData(true);
     setDataError(null);
+    const startedAt = Date.now();
 
     try {
       const [
@@ -136,12 +146,35 @@ export default function App() {
       setPriceChanges(pcList);
       setCategories(catList);
       setPaymentMethods(pmList);
-      setAdminProfile(profile);
+      setAdminProfile({
+        name: profile?.name || 'Valentina Moretti',
+        photoUrl: profile?.photoUrl || DEFAULT_ADMIN_PHOTO,
+      });
+      setDataError(null);
     } catch (err: any) {
+      const errMsg = String(err?.message || err?.error_description || JSON.stringify(err) || '');
+      const isClockSkew =
+        errMsg.includes('PGRST303') ||
+        errMsg.includes('JWT issued at future') ||
+        errMsg.includes('issued at future') ||
+        err?.code === 'PGRST303';
+
+      if (isClockSkew && retryAttempt < 3) {
+        console.warn(
+          `[Beauty Space] Desfase horario detectado al sincronizar datos (intento ${retryAttempt + 1}/3). Reintentando...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1200 * (retryAttempt + 1)));
+        return loadAllData(retryAttempt + 1);
+      }
+
       console.error('Error cargando datos de Supabase:', err);
-      setDataError(err?.message || 'Error al conectar con la base de datos de Supabase.');
-      toast.error('Error al sincronizar datos con Supabase.');
+      setDataError(err?.message || 'Error al conectar con la base de datos en la nube.');
+      toast.error('Error al sincronizar datos en la nube.');
     } finally {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_SYNC_SCREEN_MS) {
+        await new Promise((resolve) => setTimeout(resolve, MIN_SYNC_SCREEN_MS - elapsed));
+      }
       setIsLoadingData(false);
     }
   }, [toast]);
@@ -658,7 +691,7 @@ export default function App() {
         await financialsService.createMovement(m).catch(() => {});
       }
       await loadAllData();
-      toast.success('¡Copia de seguridad restaurada correctamente en Supabase!');
+      toast.success('¡Copia de seguridad restaurada correctamente en la nube!');
     } catch (err: any) {
       toast.error(`Error al restaurar copia: ${err?.message}`);
     } finally {
@@ -695,7 +728,12 @@ export default function App() {
   if (isAuthChecking) {
     return (
       <div className="min-h-screen bg-[#FAF8F5] flex flex-col items-center justify-center gap-3">
-        <BrandFloralEmblem size={42} className="text-primary animate-pulse" />
+        <motion.div
+          animate={{ rotate: [0, -5, 5, 0], scale: [1, 1.03, 1.03, 1] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <BrandFloralEmblem size={42} className="text-primary" />
+        </motion.div>
         <p className="text-xs font-serif font-bold text-primary tracking-wide">Cargando Beauty Space...</p>
       </div>
     );
@@ -715,9 +753,13 @@ export default function App() {
   if (isLoadingData && clients.length === 0 && services.length === 0) {
     return (
       <div className="min-h-screen bg-[#FAF8F5] flex flex-col items-center justify-center gap-4 text-center px-4">
-        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary animate-pulse">
+        <motion.div
+          animate={{ rotate: [0, -5, 5, 0], scale: [1, 1.03, 1.03, 1] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+          className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary"
+        >
           <BrandFloralEmblem size={32} />
-        </div>
+        </motion.div>
         <div className="space-y-1">
           <h3 className="font-serif text-lg font-bold text-primary">Sincronizando Beauty Space</h3>
           <p className="text-xs text-on-surface-variant/70">Conectando con la base de datos en la nube...</p>
@@ -740,7 +782,7 @@ export default function App() {
             <span>{dataError}</span>
           </div>
           <button
-            onClick={loadAllData}
+            onClick={() => loadAllData(0)}
             className="px-2.5 py-1 bg-terracotta text-white rounded-md text-[11px] font-bold hover:bg-terracotta/95 transition-colors ml-4 shrink-0 flex items-center gap-1 cursor-pointer"
           >
             <RefreshCw size={11} /> Reintentar

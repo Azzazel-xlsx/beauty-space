@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckCircle2,
@@ -87,46 +87,70 @@ const DEFAULT_DURATION = 2000;
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const timeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [isHovered, setIsHovered] = useState(false);
+  const activeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Defense-in-depth: Deduplicate identical rapid dispatches within 500ms
+  const lastAddedRef = useRef<{ message: string; type: ToastType; time: number }>({
+    message: '',
+    type: 'info',
+    time: 0,
+  });
 
   const dismiss = useCallback((id: string) => {
-    // Clear timer if exists
-    const timer = timeoutsRef.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timeoutsRef.current.delete(id);
-    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   const dismissAll = useCallback(() => {
-    timeoutsRef.current.forEach((timer) => clearTimeout(timer));
-    timeoutsRef.current.clear();
+    if (activeTimerRef.current) {
+      clearTimeout(activeTimerRef.current);
+      activeTimerRef.current = null;
+    }
     setToasts([]);
   }, []);
 
-  const scheduleDismissal = useCallback(
-    (id: string, duration: number) => {
-      // Clear any existing timer for this id
-      const existing = timeoutsRef.current.get(id);
-      if (existing) {
-        clearTimeout(existing);
-        timeoutsRef.current.delete(id);
-      }
+  // Top of stack is the most recent toast (the last item in toasts array)
+  const activeToast = toasts.length > 0 ? toasts[toasts.length - 1] : null;
 
-      if (duration > 0 && duration !== Infinity) {
-        const timer = setTimeout(() => {
-          dismiss(id);
-        }, duration);
-        timeoutsRef.current.set(id, timer);
+  // Active countdown timer: only the toast in the front of the stack counts down.
+  // When the front toast is dismissed, the next one comes forward and its timer starts.
+  useEffect(() => {
+    if (activeTimerRef.current) {
+      clearTimeout(activeTimerRef.current);
+      activeTimerRef.current = null;
+    }
+
+    if (!activeToast || isHovered) return;
+
+    const duration = activeToast.duration;
+    if (duration > 0 && duration !== Infinity) {
+      activeTimerRef.current = setTimeout(() => {
+        dismiss(activeToast.id);
+      }, duration);
+    }
+
+    return () => {
+      if (activeTimerRef.current) {
+        clearTimeout(activeTimerRef.current);
+        activeTimerRef.current = null;
       }
-    },
-    [dismiss]
-  );
+    };
+  }, [activeToast?.id, activeToast?.duration, isHovered, dismiss]);
 
   const addToast = useCallback(
     (type: ToastType, message: string, options?: ToastOptions): string => {
-      const id = options?.id || `toast-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const now = Date.now();
+      // Deduplicate identical message and type within 500ms
+      if (
+        lastAddedRef.current.message === message &&
+        lastAddedRef.current.type === type &&
+        now - lastAddedRef.current.time < 500
+      ) {
+        return toasts[toasts.length - 1]?.id || 'duplicate';
+      }
+      lastAddedRef.current = { message, type, time: now };
+
+      const id = options?.id || `toast-${now}-${Math.random().toString(36).substring(2, 7)}`;
       const duration = options?.duration !== undefined
         ? options.duration
         : type === 'loading'
@@ -139,7 +163,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         message,
         title: options?.title,
         duration,
-        createdAt: Date.now(),
+        createdAt: now,
       };
 
       setToasts((prev) => {
@@ -153,10 +177,9 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return [...prev, newToast];
       });
 
-      scheduleDismissal(id, duration);
       return id;
     },
-    [scheduleDismissal]
+    [toasts]
   );
 
   const update = useCallback(
@@ -189,14 +212,12 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           duration: newDuration,
         };
 
-        scheduleDismissal(id, newDuration);
-
         const next = [...prev];
         next[idx] = updatedItem;
         return next;
       });
     },
-    [scheduleDismissal]
+    []
   );
 
   const success = useCallback(
@@ -264,7 +285,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      <ToastContainer toasts={toasts} onDismiss={dismiss} />
+      <ToastContainer
+        toasts={toasts}
+        onDismiss={dismiss}
+        onHoverChange={setIsHovered}
+      />
     </ToastContext.Provider>
   );
 };
@@ -277,11 +302,13 @@ export const useToast = (): ToastContextType => {
   return context;
 };
 
-// Subcomponente individual para cada Toast
+// Subcomponente individual para cada Toast apilado
 const ToastCard: React.FC<{
   toast: ToastItem;
+  reverseIndex: number;
+  totalCount: number;
   onDismiss: (id: string) => void;
-}> = ({ toast, onDismiss }) => {
+}> = ({ toast, reverseIndex, onDismiss }) => {
   const { type, message, title, id } = toast;
 
   const styleConfig = {
@@ -322,14 +349,54 @@ const ToastCard: React.FC<{
     },
   }[type];
 
+  // Configuración posicional en la pila
+  // reverseIndex 0 = al frente (más reciente)
+  // reverseIndex 1 = directamente detrás (semivisible)
+  // reverseIndex 2 = segundo detrás (semivisible)
+  // reverseIndex >= 3 = oculto en el fondo
+  const isTop = reverseIndex === 0;
+  const isBehind1 = reverseIndex === 1;
+  const isBehind2 = reverseIndex === 2;
+
+  const yOffset = isTop ? 0 : isBehind1 ? 10 : isBehind2 ? 20 : 28;
+  const scale = isTop ? 1 : isBehind1 ? 0.94 : isBehind2 ? 0.88 : 0.82;
+  const opacity = isTop ? 1 : isBehind1 ? 0.75 : isBehind2 ? 0.45 : 0;
+  const zIndex = 50 - reverseIndex;
+
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: -28, scale: 0.95 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: -24, scale: 0.95, transition: { duration: 0.18 } }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={`pointer-events-auto relative overflow-hidden flex items-center justify-between gap-3 p-3 sm:p-3.5 ${styleConfig.bgColor} border ${styleConfig.borderColor} rounded-2xl shadow-md backdrop-blur-xs min-w-[280px] max-w-[380px] group`}
+      style={{
+        zIndex,
+        gridColumnStart: 1,
+        gridRowStart: 1,
+        transformOrigin: 'top center',
+      }}
+      initial={{ opacity: 0, y: -24, scale: 0.95 }}
+      animate={{
+        opacity,
+        y: yOffset,
+        scale,
+      }}
+      exit={{
+        opacity: 0,
+        y: -18,
+        scale: 0.92,
+        transition: { duration: 0.2, ease: 'easeOut' },
+      }}
+      transition={{
+        type: 'spring',
+        stiffness: 380,
+        damping: 28,
+        mass: 0.8,
+      }}
+      className={`relative overflow-hidden flex items-center justify-between gap-3 p-3 sm:p-3.5 ${
+        styleConfig.bgColor
+      } border ${styleConfig.borderColor} rounded-2xl ${
+        isTop ? 'shadow-lg' : isBehind1 ? 'shadow-md' : 'shadow-xs'
+      } backdrop-blur-xs min-w-[280px] max-w-[380px] w-full group ${
+        isTop ? 'pointer-events-auto' : 'pointer-events-none select-none'
+      }`}
       role="status"
       aria-live="polite"
     >
@@ -353,14 +420,18 @@ const ToastCard: React.FC<{
         </div>
       </div>
 
-      {/* Botón de cerrar */}
-      <button
-        onClick={() => onDismiss(id)}
-        className="p-1 rounded-lg text-[#7E8474] hover:text-[#1C1D18] hover:bg-black/5 transition-colors shrink-0 cursor-pointer"
-        aria-label="Cerrar notificación"
-      >
-        <X size={14} strokeWidth={2} />
-      </button>
+      {/* Botón de cerrar (sólo interactivo en la tarjeta frontal) */}
+      {isTop ? (
+        <button
+          onClick={() => onDismiss(id)}
+          className="p-1 rounded-lg text-[#7E8474] hover:text-[#1C1D18] hover:bg-black/5 transition-colors shrink-0 cursor-pointer"
+          aria-label="Cerrar notificación"
+        >
+          <X size={14} strokeWidth={2} />
+        </button>
+      ) : (
+        <div className="w-5 h-5 shrink-0" />
+      )}
     </motion.div>
   );
 };
@@ -368,17 +439,31 @@ const ToastCard: React.FC<{
 export const ToastContainer: React.FC<{
   toasts: ToastItem[];
   onDismiss: (id: string) => void;
-}> = ({ toasts, onDismiss }) => {
+  onHoverChange?: (isHovered: boolean) => void;
+}> = ({ toasts, onDismiss, onHoverChange }) => {
   return (
     <div
       aria-label="Notificaciones"
-      className="fixed top-4 left-4 z-[70] flex flex-col gap-2.5 pointer-events-none max-w-[calc(100vw-2rem)] sm:max-w-sm"
+      onMouseEnter={() => onHoverChange?.(true)}
+      onMouseLeave={() => onHoverChange?.(false)}
+      className="fixed top-4 left-4 z-[70] pointer-events-none max-w-[calc(100vw-2rem)] sm:max-w-sm"
     >
-      <AnimatePresence mode="popLayout">
-        {toasts.map((toast) => (
-          <ToastCard key={toast.id} toast={toast} onDismiss={onDismiss} />
-        ))}
-      </AnimatePresence>
+      <div className="relative grid grid-cols-1 grid-rows-1 items-start">
+        <AnimatePresence mode="popLayout">
+          {toasts.map((toast, index) => {
+            const reverseIndex = toasts.length - 1 - index;
+            return (
+              <ToastCard
+                key={toast.id}
+                toast={toast}
+                reverseIndex={reverseIndex}
+                totalCount={toasts.length}
+                onDismiss={onDismiss}
+              />
+            );
+          })}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

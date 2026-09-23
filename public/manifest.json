@@ -1,0 +1,11 @@
+{
+  "name": "Beauty Space",
+  "short_name": "Beauty Space",
+  "theme_color": "#526138",
+  "background_color": "#FAF8F5",
+  "display": "standalone",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

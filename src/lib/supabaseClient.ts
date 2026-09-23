@@ -17,6 +17,48 @@ export const isSupabaseConfigured = (): boolean => {
   return true;
 };
 
+/**
+ * Custom fetch wrapper that automatically handles clock skew between Supabase Auth
+ * and PostgREST (PGRST303: "JWT issued at future").
+ * When a fresh JWT is issued, server container clock drift can cause PostgREST to
+ * reject requests for 1-2 seconds. Retrying after a brief pause allows the clock
+ * to catch up and the request to succeed transparently.
+ */
+const fetchWithClockSkewRetry: typeof fetch = async (input, init) => {
+  const maxRetries = 3;
+  let attempt = 0;
+
+  while (true) {
+    attempt++;
+    const response = await fetch(input, init);
+
+    // If PostgREST reports clock skew / future JWT
+    if (!response.ok && (response.status === 401 || response.status === 400)) {
+      try {
+        const clone = response.clone();
+        const text = await clone.text();
+        if (
+          text.includes('PGRST303') ||
+          text.includes('JWT issued at future') ||
+          text.includes('issued at future')
+        ) {
+          if (attempt <= maxRetries) {
+            console.warn(
+              `[Supabase] Desfase de reloj detectado (PGRST303: JWT issued at future). Reintentando petición (${attempt}/${maxRetries}) tras esperar sincronización...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+            continue;
+          }
+        }
+      } catch {
+        // Continue with original response if clone fails
+      }
+    }
+
+    return response;
+  }
+};
+
 let clientInstance: SupabaseClient | null = null;
 
 /**
@@ -40,7 +82,7 @@ export const getSupabase = (): SupabaseClient => {
       );
     }
 
-    // Inicializar cliente con opciones estándar
+    // Inicializar cliente con opciones estándar y tolerancia a desfase horario
     clientInstance = createClient(
       url,
       key,
@@ -48,6 +90,9 @@ export const getSupabase = (): SupabaseClient => {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
+        },
+        global: {
+          fetch: fetchWithClockSkewRetry,
         },
       }
     );

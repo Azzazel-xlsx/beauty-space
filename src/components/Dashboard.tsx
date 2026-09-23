@@ -4,6 +4,7 @@ import { Plus, Minus, Search, Filter, Trash2, ArrowUpRight, ArrowDownRight, Tren
 import { useDebounce } from '../hooks/useDebounce';
 import { formatMoney } from '../utils/formatters';
 import { Modal } from './Modal';
+import { SelectField } from './ui/SelectField';
 
 interface DashboardProps {
   movements: FinancialMovement[];
@@ -546,31 +547,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             {/* Type & Category Filter dropdowns */}
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <div className="flex-1 sm:flex-initial flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-outline-variant/30 bg-surface-container-lowest text-[11px] sm:text-xs font-bold text-on-surface-variant">
-                <Filter size={11} className="shrink-0" />
-                <select
+              <div className="flex-1 sm:flex-initial">
+                <SelectField
                   value={filterType}
-                  onChange={(e) => setFilterType(e.target.value as any)}
-                  className="bg-transparent focus:outline-none cursor-pointer w-full"
-                >
-                  <option value="all">Flujo Completo</option>
-                  <option value="income">Ingresos (+)</option>
-                  <option value="expense">Egresos (-)</option>
-                </select>
+                  onChange={(val) => setFilterType(val as any)}
+                  options={[
+                    { value: 'all', label: 'Flujo Completo' },
+                    { value: 'income', label: 'Ingresos (+)' },
+                    { value: 'expense', label: 'Egresos (-)' },
+                  ]}
+                  variant="dropdown"
+                  triggerClassName="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant/30 bg-surface-container-lowest text-[11px] sm:text-xs font-bold text-on-surface-variant cursor-pointer hover:border-primary/40 transition-colors w-full sm:w-auto min-h-0"
+                />
               </div>
 
               {/* Category Filter dropdown */}
-              <div className="flex-1 sm:flex-initial flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-outline-variant/30 bg-surface-container-lowest text-[11px] sm:text-xs font-bold text-on-surface-variant">
-                <select
+              <div className="flex-1 sm:flex-initial">
+                <SelectField
                   value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                  className="bg-transparent focus:outline-none cursor-pointer w-full truncate"
-                >
-                  <option value="all">Categorías (Todas)</option>
-                  {filterCategoriesList.map((cat, idx) => (
-                    <option key={idx} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilterCategory(val)}
+                  options={[
+                    { value: 'all', label: 'Categorías (Todas)' },
+                    ...filterCategoriesList.map((cat) => ({ value: cat, label: cat }))
+                  ]}
+                  variant="dropdown"
+                  triggerClassName="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant/30 bg-surface-container-lowest text-[11px] sm:text-xs font-bold text-on-surface-variant cursor-pointer hover:border-primary/40 transition-colors w-full sm:w-auto min-h-0 truncate"
+                />
               </div>
             </div>
 
@@ -808,52 +810,43 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Categoría</label>
-                <select
-                  value={incomeCategory}
-                  onChange={(e) => setIncomeCategory(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold truncate"
-                >
-                  <option value="Manicura Rusa">Manicura Rusa</option>
-                  <option value="Soft Gel Extensión">Soft Gel Extensión</option>
-                  <option value="Gel X Extensiones">Gel X Extensiones</option>
-                  <option value="Nail Art Editorial">Nail Art Editorial</option>
-                  <option value="Pedicura Luxury">Pedicura Luxury</option>
-                  <option value="Capacitación">Capacitaciones</option>
-                  <option value="Venta de Productos">Venta de Productos</option>
-                  <option value="Otros Ingresos">Otros Ingresos</option>
-                </select>
-              </div>
+              <SelectField
+                label="Categoría"
+                value={incomeCategory}
+                onChange={(val) => setIncomeCategory(val)}
+                options={[
+                  { value: 'Manicura Rusa', label: 'Manicura Rusa' },
+                  { value: 'Soft Gel Extensión', label: 'Soft Gel Extensión' },
+                  { value: 'Gel X Extensiones', label: 'Gel X Extensiones' },
+                  { value: 'Nail Art Editorial', label: 'Nail Art Editorial' },
+                  { value: 'Pedicura Luxury', label: 'Pedicura Luxury' },
+                  { value: 'Capacitación', label: 'Capacitaciones' },
+                  { value: 'Venta de Productos', label: 'Venta de Productos' },
+                  { value: 'Otros Ingresos', label: 'Otros Ingresos' },
+                ]}
+                variant="sheet"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Método de Pago</label>
-                <select
-                  value={incomeMethod}
-                  onChange={(e) => setIncomeMethod(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-bold uppercase tracking-wider truncate"
-                >
-                  {paymentMethods.map(m => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </div>
+              <SelectField
+                label="Método de Pago"
+                value={incomeMethod}
+                onChange={(val) => setIncomeMethod(val)}
+                options={paymentMethods.map((m) => ({ value: m, label: m }))}
+                variant="sheet"
+              />
 
-              <div>
-                <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Asociar Clienta</label>
-                <select
-                  value={incomeClient}
-                  onChange={(e) => setIncomeClient(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold truncate"
-                >
-                  <option value="">No asociar clienta</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
+              <SelectField
+                label="Asociar Clienta"
+                value={incomeClient}
+                onChange={(val) => setIncomeClient(val)}
+                options={[
+                  { value: '', label: 'No asociar clienta' },
+                  ...clients.map((c) => ({ value: c.id, label: c.name }))
+                ]}
+                variant="sheet"
+              />
             </div>
 
             <div>
@@ -1006,18 +999,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-[9px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Categoría de Egreso</label>
-                <select
-                  value={expenseCategoryInput}
-                  onChange={(e) => setExpenseCategoryInput(e.target.value)}
-                  className="w-full bg-surface-container-low text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-semibold truncate"
-                >
-                  {expenseCategories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
+              <SelectField
+                label="Categoría de Egreso"
+                value={expenseCategoryInput}
+                onChange={(val) => setExpenseCategoryInput(val)}
+                options={expenseCategories.map((cat) => ({ value: cat, label: cat }))}
+                variant="sheet"
+              />
             </div>
 
             <div className="pt-2 flex gap-2.5 sm:gap-3">

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Eye, EyeOff, ArrowRight, Loader2, User, Mail } from 'lucide-react';
-import { AdminProfile } from '../types';
+import { AdminProfile, DEFAULT_ADMIN_PHOTO } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import loginBrandBgAsset from '../assets/images/beauty_space_editorial_1789497481351.jpg';
 
@@ -107,7 +107,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
 
     try {
       if (!isSupabaseConfigured()) {
-        setError('Supabase no está configurado. Por favor define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en tu archivo .env para acceder.');
+        setError('No se pudo conectar con el servidor. Verifica la configuración.');
         setIsShaking(true);
         setTimeout(() => setIsShaking(false), 500);
         return;
@@ -151,15 +151,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
       {/* ========================================================================= */}
       <div className="w-[34%] xs:w-[36%] sm:w-[38%] md:w-[40%] lg:w-[42%] xl:w-[44%] min-h-dvh h-dvh relative shrink-0 overflow-hidden flex items-center justify-center bg-[#F3EFE9] border-r border-[#E8E4DA]/60">
         {/* Fotografía de plantas/hojas sobre soporte de travertino con iluminación natural */}
-        <motion.img
-          initial={{ scale: 1.05, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-          src={loginBackgroundImage}
-          alt="Beauty Space Editorial"
-          referrerPolicy="no-referrer"
-          className="absolute inset-0 w-full h-full object-cover object-center select-none pointer-events-none"
-        />
+        {loginBackgroundImage ? (
+          <motion.img
+            initial={{ scale: 1.05, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+            src={loginBackgroundImage}
+            alt="Beauty Space Editorial"
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 w-full h-full object-cover object-center select-none pointer-events-none"
+          />
+        ) : null}
 
         {/* Scrim cálido muy sutil que asegura lectura impecable manteniendo la naturalidad de la foto */}
         <div className="absolute inset-0 bg-[#FAF8F5]/10 pointer-events-none" />
@@ -219,7 +221,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
               transition={{ duration: 0.55, delay: 0.25 }}
               className="text-xs xs:text-[13px] sm:text-[14.5px] font-normal text-[#6C7164] leading-relaxed pt-0.5 sm:pt-1"
             >
-              Accede a tu cuenta de Supabase para continuar con la gestión de tu negocio.
+              Inicia sesión para continuar con la gestión de tu negocio.
             </motion.p>
           </div>
 
@@ -232,7 +234,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ adminProfile, onLoginS
           >
             <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
               <img
-                src={adminProfile.photoUrl}
+                src={adminProfile?.photoUrl?.trim() || DEFAULT_ADMIN_PHOTO}
                 alt={displayName}
                 referrerPolicy="no-referrer"
                 className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover border border-white/70 shadow-xs shrink-0"

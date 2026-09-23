@@ -333,3 +333,15 @@ CREATE POLICY "Authenticated users have full access to payment_methods"
     USING (auth.role() = 'authenticated')
     WITH CHECK (auth.role() = 'authenticated');
 
+-- =============================================================================
+-- 10. VISTA PÚBLICA DE PERFIL DE ADMINISTRADORA (Login Preview)
+-- Permite lectura pública exclusivamente de nombre y foto para la pantalla
+-- de login, sin dar acceso a datos confidenciales ni tocar el resto de RLS.
+-- =============================================================================
+CREATE OR REPLACE VIEW public_admin_profile AS
+  SELECT name, photo_url FROM admin_profile LIMIT 1;
+
+GRANT SELECT ON public_admin_profile TO anon;
+GRANT SELECT ON public_admin_profile TO authenticated;
+
+

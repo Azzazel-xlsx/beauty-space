@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { AdminProfile } from '../types';
+import { AdminProfile, DEFAULT_ADMIN_PHOTO } from '../types';
 
 const DEFAULT_CATEGORIES = [
   'Suministros & Esmaltes',
@@ -12,8 +12,8 @@ const DEFAULT_CATEGORIES = [
 const DEFAULT_PAYMENT_METHODS = ['TRANSFERENCIA', 'EFECTIVO', 'TARJETA'];
 
 const DEFAULT_ADMIN_PROFILE: AdminProfile = {
-  name: 'Administradora',
-  photoUrl: '',
+  name: 'Valentina Moretti',
+  photoUrl: DEFAULT_ADMIN_PHOTO,
 };
 
 export const settingsService = {
@@ -91,6 +91,21 @@ export const settingsService = {
   async deletePaymentMethod(name: string): Promise<void> {
     const { error } = await supabase.from('payment_methods').delete().eq('name', name);
     if (error) throw error;
+  },
+
+  async getPublicAdminProfile(): Promise<AdminProfile> {
+    const { data, error } = await supabase.from('public_admin_profile').select('*').maybeSingle();
+    if (error) {
+      // No bloquear el login por esto — si falla, se queda con el placeholder
+      // hasta que cargue el perfil completo tras autenticarse.
+      console.warn('No se pudo precargar el perfil público:', error);
+      return DEFAULT_ADMIN_PROFILE;
+    }
+    if (!data) return DEFAULT_ADMIN_PROFILE;
+    return {
+      name: data.name || DEFAULT_ADMIN_PROFILE.name,
+      photoUrl: data.photo_url || DEFAULT_ADMIN_PROFILE.photoUrl,
+    };
   },
 
   async getAdminProfile(): Promise<AdminProfile> {
