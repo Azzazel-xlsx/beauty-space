@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -29,10 +29,11 @@ import { appointmentsService } from './services/appointmentsService';
 import { financialsService } from './services/financialsService';
 import { auditService } from './services/auditService';
 import { settingsService } from './services/settingsService';
-import { CompleteBackupData } from './utils/backup';
 import { Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 
 const MIN_SYNC_SCREEN_MS = 1000;
+const INACTIVITY_TOTAL_MS = 5 * 60 * 1000; // 5 minutos de inactividad
+const INACTIVITY_WARNING_MS = 4 * 60 * 1000; // Aviso al minuto 4 (1 minuto restante)
 
 export default function App() {
   const toast = useToast();
@@ -42,8 +43,8 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
-  // Inactivity timeout warning
-  const [inactivityWarning, setInactivityWarning] = useState<boolean>(false);
+  // Inactivity timeout countdown (seconds remaining in the final minute, or null)
+  const [inactivityCountdown, setInactivityCountdown] = useState<number | null>(null);
   const lastActiveRef = useRef<number>(Date.now());
 
   // Business Data State (loaded asynchronously from Supabase)
@@ -186,59 +187,59 @@ export default function App() {
     }
   }, [isAuthenticated, loadAllData]);
 
-  // Read timeout preference stored per device
-  const getTimeoutMinutes = (): number => {
-    try {
-      const saved = localStorage.getItem('bs_auth_timeout_mins');
-      return saved !== null ? Number(saved) : 15;
-    } catch {
-      return 15;
-    }
-  };
-
-  // Activity tracker & auto-lock by inactivity
+  // Activity tracker & automatic logout on inactivity (5 mins total, warning at min 4)
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const handleUserActivity = () => {
+    lastActiveRef.current = Date.now();
+
+    const resetInactivityTimer = () => {
       lastActiveRef.current = Date.now();
-      if (inactivityWarning) {
-        setInactivityWarning(false);
-      }
+      setInactivityCountdown(null);
     };
 
-    window.addEventListener('mousedown', handleUserActivity);
-    window.addEventListener('keydown', handleUserActivity);
-    window.addEventListener('touchstart', handleUserActivity);
-    window.addEventListener('scroll', handleUserActivity);
+    const userActivityEvents = [
+      'mousedown',
+      'mouseup',
+      'click',
+      'pointerdown',
+      'touchstart',
+      'touchend',
+      'keydown',
+      'keyup',
+      'scroll',
+      'wheel'
+    ];
+
+    userActivityEvents.forEach((event) => {
+      window.addEventListener(event, resetInactivityTimer, { passive: true });
+    });
 
     const interval = setInterval(() => {
-      const timeoutMins = getTimeoutMinutes();
-      if (timeoutMins <= 0) return;
-
-      const timeoutMs = timeoutMins * 60 * 1000;
-      const warningMs = Math.max(timeoutMs - 60000, 30000);
       const elapsed = Date.now() - lastActiveRef.current;
 
-      if (elapsed >= timeoutMs) {
+      if (elapsed >= INACTIVITY_TOTAL_MS) {
+        setInactivityCountdown(null);
         handleLogout();
-      } else if (elapsed >= warningMs) {
-        setInactivityWarning(true);
+      } else if (elapsed >= INACTIVITY_WARNING_MS) {
+        const remainingSeconds = Math.max(1, Math.ceil((INACTIVITY_TOTAL_MS - elapsed) / 1000));
+        setInactivityCountdown(remainingSeconds);
+      } else {
+        setInactivityCountdown(null);
       }
-    }, 10000);
+    }, 1000);
 
     return () => {
-      window.removeEventListener('mousedown', handleUserActivity);
-      window.removeEventListener('keydown', handleUserActivity);
-      window.removeEventListener('touchstart', handleUserActivity);
-      window.removeEventListener('scroll', handleUserActivity);
+      userActivityEvents.forEach((event) => {
+        window.removeEventListener(event, resetInactivityTimer);
+      });
       clearInterval(interval);
     };
-  }, [isAuthenticated, inactivityWarning]);
+  }, [isAuthenticated]);
 
   const handleLoginSuccess = () => {
     lastActiveRef.current = Date.now();
-    setInactivityWarning(false);
+    setInactivityCountdown(null);
     setIsAuthenticated(true);
   };
 
@@ -248,7 +249,7 @@ export default function App() {
     } catch (err) {
       console.error(err);
     }
-    setInactivityWarning(false);
+    setInactivityCountdown(null);
     setIsAuthenticated(false);
   };
 
@@ -652,78 +653,6 @@ export default function App() {
     }
   };
 
-  const handleResetDatabase = async () => {
-    try {
-      await Promise.all([
-        supabase.from('appointment_extras').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('appointments').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('financial_movements').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('special_prices').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('extra_price_history').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('extras').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('service_price_history').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('services').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('clients').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
-        supabase.from('price_change_events').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-      ]);
-      await loadAllData();
-      toast.success('¡Base de datos restablecida a estado limpio correctamente!');
-    } catch (err: any) {
-      console.error('Error al restablecer:', err);
-      toast.error(`Error al restablecer: ${err?.message}`);
-    }
-  };
-
-  const handleRestoreBackup = async (backup: CompleteBackupData) => {
-    setIsLoadingData(true);
-    try {
-      const { payload } = backup;
-      for (const c of payload.clients) {
-        await clientsService.createClient(c).catch(() => {});
-      }
-      for (const s of payload.services) {
-        await servicesService.createService(s).catch(() => {});
-      }
-      for (const a of payload.appointments) {
-        await appointmentsService.createAppointment(a).catch(() => {});
-      }
-      for (const m of payload.movements) {
-        await financialsService.createMovement(m).catch(() => {});
-      }
-      await loadAllData();
-      toast.success('¡Copia de seguridad restaurada correctamente en la nube!');
-    } catch (err: any) {
-      toast.error(`Error al restaurar copia: ${err?.message}`);
-    } finally {
-      setIsLoadingData(false);
-    }
-  };
-
-  // Full backup data payload snapshot for JSON export
-  const fullBackupData: CompleteBackupData = useMemo(() => ({
-    schemaVersion: '1.0',
-    exportedAt: new Date().toISOString(),
-    app: 'Beauty Space',
-    summary: {
-      clientsCount: clients.length,
-      appointmentsCount: appointments.length,
-      movementsCount: movements.length,
-      servicesCount: services.length,
-      specialPricesCount: specialPrices.length
-    },
-    payload: {
-      clients,
-      services,
-      specialPrices,
-      appointments,
-      movements,
-      priceChanges,
-      categories,
-      paymentMethods,
-      adminProfile
-    }
-  }), [clients, services, specialPrices, appointments, movements, priceChanges, categories, paymentMethods, adminProfile]);
-
   // Auth checking indicator
   if (isAuthChecking) {
     return (
@@ -790,20 +719,27 @@ export default function App() {
         </div>
       )}
 
-      {inactivityWarning && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 flex items-center justify-between text-xs text-amber-800">
-          <div className="flex items-center gap-2 font-medium">
-            <Clock size={14} className="text-amber-600 animate-pulse" />
-            <span>Tu sesión se cerrará en 1 minuto por inactividad. Presiona continuar para mantenerla abierta.</span>
+      {inactivityCountdown !== null && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-900 sticky top-0 z-50 backdrop-blur-md animate-fadeIn shadow-xs">
+          <div className="flex items-center gap-2.5 font-medium">
+            <Clock size={16} className="text-amber-700 animate-pulse shrink-0" />
+            <span>
+              La sesión se cerrará automáticamente por inactividad en{' '}
+              <strong className="font-mono font-bold text-amber-900 bg-amber-500/20 px-1.5 py-0.5 rounded text-xs">
+                {inactivityCountdown} {inactivityCountdown === 1 ? 'segundo' : 'segundos'}
+              </strong>
+              . Interactúa o presiona continuar para mantenerla abierta.
+            </span>
           </div>
           <button
+            type="button"
             onClick={() => {
               lastActiveRef.current = Date.now();
-              setInactivityWarning(false);
+              setInactivityCountdown(null);
             }}
-            className="px-3 py-1 bg-amber-600 text-white rounded-lg font-bold text-[11px] hover:bg-amber-700 transition-colors cursor-pointer"
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] shadow-xs transition-colors shrink-0 cursor-pointer"
           >
-            Continuar trabajando
+            Continuar sesión
           </button>
         </div>
       )}
@@ -871,12 +807,9 @@ export default function App() {
           onDeleteCategory={handleDeleteCategory}
           onAddPaymentMethod={handleAddPaymentMethod}
           onDeletePaymentMethod={handleDeletePaymentMethod}
-          onResetDatabase={handleResetDatabase}
           adminProfile={adminProfile}
           onUpdateAdminProfile={handleUpdateAdminProfile}
-          onRestoreBackup={handleRestoreBackup}
           onReloadData={loadAllData}
-          fullBackupData={fullBackupData}
         />
       )}
 

@@ -11,31 +11,15 @@ import {
   User,
   Camera,
   Lock,
-  Clock,
-  ShieldCheck,
   Mail,
   LogOut,
   Eye,
   EyeOff,
-  CloudUpload,
-  Download,
-  Upload,
-  RefreshCw,
-  Database,
-  Sparkles,
-  AlertCircle
+  RefreshCw
 } from 'lucide-react';
 import { formatMoney } from '../utils/formatters';
 import { useToast } from './Toast';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
-import {
-  getLegacyLocalDataSummary,
-  migrateLocalDataToSupabase,
-  clearLegacyLocalData,
-  LocalDataSummary,
-  MigrationProgressReport
-} from '../utils/migration';
-import { validateBackupPayload, downloadBackupSnapshot, CompleteBackupData } from '../utils/backup';
 import { ImageCropModal } from './ui/ImageCropModal';
 
 interface AjustesProps {
@@ -46,12 +30,9 @@ interface AjustesProps {
   onDeleteCategory: (category: string) => void;
   onAddPaymentMethod: (method: string) => void;
   onDeletePaymentMethod: (method: string) => void;
-  onResetDatabase?: () => void;
   adminProfile?: { name: string; photoUrl: string };
   onUpdateAdminProfile: (profile: { name: string; photoUrl: string }) => void;
-  onRestoreBackup?: (backup: CompleteBackupData) => void;
   onReloadData?: () => void;
-  fullBackupData?: CompleteBackupData;
 }
 
 export const Ajustes: React.FC<AjustesProps> = ({
@@ -62,16 +43,12 @@ export const Ajustes: React.FC<AjustesProps> = ({
   onDeleteCategory,
   onAddPaymentMethod,
   onDeletePaymentMethod,
-  onResetDatabase,
   adminProfile,
   onUpdateAdminProfile,
-  onRestoreBackup,
   onReloadData,
-  fullBackupData,
 }) => {
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const backupImportRef = useRef<HTMLInputElement>(null);
 
   const [newCat, setNewCat] = useState('');
   const [newMethod, setNewMethod] = useState('');
@@ -86,23 +63,6 @@ export const Ajustes: React.FC<AjustesProps> = ({
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-
-  // Inactivity timeout preference (stored locally per device)
-  const [timeoutMinutes, setTimeoutMinutes] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('bs_auth_timeout_mins');
-      return saved !== null ? Number(saved) : 15;
-    } catch {
-      return 15;
-    }
-  });
-  const [timeoutSaved, setTimeoutSaved] = useState(false);
-
-  // Migration states
-  const [localSummary, setLocalSummary] = useState<LocalDataSummary>(() => getLegacyLocalDataSummary());
-  const [isMigrating, setIsMigrating] = useState(false);
-  const [migrationStatus, setMigrationStatus] = useState<string>('');
-  const [migrationReport, setMigrationReport] = useState<MigrationProgressReport | null>(null);
 
   // Admin Profile States
   const [profileName, setProfileName] = useState(adminProfile?.name || 'Valentina Moretti');
@@ -226,18 +186,6 @@ export const Ajustes: React.FC<AjustesProps> = ({
     }
   };
 
-  const handleTimeoutChange = (minutes: number) => {
-    setTimeoutMinutes(minutes);
-    try {
-      localStorage.setItem('bs_auth_timeout_mins', minutes.toString());
-    } catch {
-      // ignore
-    }
-    setTimeoutSaved(true);
-    toast.success(`Tiempo de bloqueo fijado en ${minutes === 0 ? 'desactivado' : `${minutes} min`}.`);
-    setTimeout(() => setTimeoutSaved(false), 2500);
-  };
-
   const handleUpdateProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!profileName.trim()) return;
@@ -311,81 +259,6 @@ export const Ajustes: React.FC<AjustesProps> = ({
       setPendingImageSrc(null);
     }
     setCropModalOpen(false);
-  };
-
-  // Migration handler
-  const handleRunMigration = async () => {
-    if (!isSupabaseConfigured()) {
-      toast.error('No se pudo conectar con el servidor. Revisa tu conexión.');
-      return;
-    }
-
-    setIsMigrating(true);
-    setMigrationStatus('Iniciando sincronización...');
-    setMigrationReport(null);
-
-    try {
-      const report = await migrateLocalDataToSupabase((msg) => {
-        setMigrationStatus(msg);
-      });
-      setMigrationReport(report);
-      setLocalSummary(getLegacyLocalDataSummary());
-      toast.success('¡Datos locales sincronizados exitosamente!');
-      onReloadData?.();
-    } catch (err: any) {
-      console.error('Error durante migración:', err);
-      toast.error(`Error en la migración: ${err?.message || 'Error desconocido'}`);
-    } finally {
-      setIsMigrating(false);
-      setMigrationStatus('');
-    }
-  };
-
-  const handleClearLocalData = () => {
-    if (window.confirm('¿Segura que deseas eliminar los datos antiguos guardados en el navegador local? Esta acción no afectará los datos que ya están sincronizados en la nube.')) {
-      clearLegacyLocalData();
-      setLocalSummary(getLegacyLocalDataSummary());
-      toast.success('Datos locales eliminados de este navegador.');
-    }
-  };
-
-  // Backup handlers
-  const handleDownloadBackup = () => {
-    if (!fullBackupData) {
-      toast.error('No hay datos disponibles para exportar.');
-      return;
-    }
-    try {
-      downloadBackupSnapshot(fullBackupData);
-      toast.success('Copia de seguridad descargada correctamente.');
-    } catch (err: any) {
-      toast.error(`Error al exportar: ${err?.message}`);
-    }
-  };
-
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const rawJson = event.target?.result as string;
-        const validation = validateBackupPayload(rawJson);
-        if (!validation.valid || !validation.backupData) {
-          toast.error(validation.error || 'Archivo de copia de seguridad no válido.');
-          return;
-        }
-        if (onRestoreBackup) {
-          onRestoreBackup(validation.backupData);
-        }
-      } catch (err: any) {
-        toast.error(`Error procesando archivo: ${err?.message}`);
-      } finally {
-        if (backupImportRef.current) backupImportRef.current.value = '';
-      }
-    };
-    reader.readAsText(file);
   };
 
   // Categories & Payment Methods Handlers
@@ -655,185 +528,12 @@ export const Ajustes: React.FC<AjustesProps> = ({
             )}
           </div>
 
-          {/* TARJETA 3: Seguridad de Sesión y Bloqueo por Inactividad */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
-                <Clock size={18} /> Bloqueo Automático por Inactividad
-              </h2>
-              {timeoutSaved && (
-                <span className="text-[9px] text-sage font-bold flex items-center gap-1">
-                  <CheckCircle2 size={11} /> Guardado
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Cierra tu sesión automáticamente si no hay actividad en este terminal para proteger la privacidad de las clientas.
-            </p>
-            <div className="wavy-divider opacity-30"></div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {[5, 15, 30, 0].map((mins) => (
-                <button
-                  key={mins}
-                  type="button"
-                  onClick={() => handleTimeoutChange(mins)}
-                  className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-all min-h-[44px] flex items-center justify-center cursor-pointer ${
-                    timeoutMinutes === mins
-                      ? 'bg-primary text-white border-primary shadow-xs'
-                      : 'bg-surface-container-low text-on-surface-variant border-outline-variant/20 hover:border-primary/40'
-                  }`}
-                >
-                  {mins === 0 ? 'Desactivado' : `${mins} min`}
-                </button>
-              ))}
-            </div>
-
-            <div className="bg-surface-container/30 p-2.5 rounded-xl border border-outline-variant/15 flex items-start gap-2 text-[10px] text-on-surface-variant/75">
-              <ShieldCheck size={14} className="text-primary shrink-0 mt-0.5" />
-              <p className="leading-normal">
-                Esta preferencia se guarda localmente en este dispositivo.
-              </p>
-            </div>
-          </div>
-
         </div>
 
-        {/* COLUMNA 2: Migración Inicial, Respaldos y Auditoría */}
+        {/* COLUMNA 2: Auditoría de Tarifas */}
         <div className="space-y-6">
 
-          {/* TARJETA 4: Sincronización Inicial de Datos Locales a Supabase */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
-                <CloudUpload size={18} /> Sincronización Inicial a la Nube
-              </h2>
-              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                localSummary.totalItems > 0 ? 'text-amber-700 bg-amber-500/15' : 'text-sage bg-sage/10'
-              }`}>
-                {localSummary.totalItems > 0 ? `${localSummary.totalItems} registros locales` : 'Todo sincronizado'}
-              </span>
-            </div>
-            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Herramienta de transición: sube los datos que estaban guardados en la memoria de este navegador (celular o laptop) a la nube.
-            </p>
-            <div className="wavy-divider opacity-30"></div>
-
-            {/* Local items breakdown */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-              <div className="bg-surface-container/30 p-2.5 rounded-xl border border-outline-variant/15">
-                <p className="text-sm font-mono font-bold text-primary">{localSummary.clientsCount}</p>
-                <p className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 font-semibold">Clientas</p>
-              </div>
-              <div className="bg-surface-container/30 p-2.5 rounded-xl border border-outline-variant/15">
-                <p className="text-sm font-mono font-bold text-primary">{localSummary.servicesCount}</p>
-                <p className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 font-semibold">Servicios</p>
-              </div>
-              <div className="bg-surface-container/30 p-2.5 rounded-xl border border-outline-variant/15">
-                <p className="text-sm font-mono font-bold text-primary">{localSummary.appointmentsCount}</p>
-                <p className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 font-semibold">Citas</p>
-              </div>
-              <div className="bg-surface-container/30 p-2.5 rounded-xl border border-outline-variant/15">
-                <p className="text-sm font-mono font-bold text-primary">{localSummary.movementsCount}</p>
-                <p className="text-[9px] uppercase tracking-wider text-on-surface-variant/70 font-semibold">Movimientos</p>
-              </div>
-            </div>
-
-            {migrationStatus && (
-              <div className="p-3 bg-primary/5 border border-primary/20 rounded-xl text-xs text-primary font-medium flex items-center gap-2">
-                <RefreshCw size={14} className="animate-spin shrink-0" />
-                <span>{migrationStatus}</span>
-              </div>
-            )}
-
-            {migrationReport && (
-              <div className="p-3 bg-sage/10 border border-sage/20 rounded-xl text-xs text-sage space-y-1">
-                <p className="font-bold flex items-center gap-1.5">
-                  <CheckCircle2 size={14} /> Sincronización finalizada:
-                </p>
-                <p className="text-[11px] text-on-surface-variant">
-                  {migrationReport.clientsMigrated} clientas, {migrationReport.servicesMigrated} servicios, {migrationReport.extrasMigrated} extras, {migrationReport.appointmentsMigrated} citas y {migrationReport.movementsMigrated} movimientos financieros sincronizados en la nube.
-                </p>
-                {migrationReport.errors.length > 0 && (
-                  <div className="text-terracotta text-[10px] mt-1 space-y-0.5">
-                    {migrationReport.errors.slice(0, 3).map((err, i) => (
-                      <p key={i}>• {err}</p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button
-                type="button"
-                onClick={handleRunMigration}
-                disabled={isMigrating || localSummary.totalItems === 0}
-                className="flex-1 py-2.5 px-4 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer disabled:opacity-50"
-              >
-                <CloudUpload size={14} />
-                {isMigrating ? 'Sincronizando...' : 'Sincronizar datos locales'}
-              </button>
-
-              {localSummary.totalItems > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearLocalData}
-                  disabled={isMigrating}
-                  className="py-2.5 px-3 bg-surface-container-high text-on-surface-variant hover:text-terracotta hover:bg-terracotta/10 border border-outline-variant/25 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer disabled:opacity-50"
-                  title="Borra las copias antiguas de localStorage en este equipo"
-                >
-                  <Trash2 size={14} />
-                  Limpiar local
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* TARJETA 5: Copias de Seguridad Portables (JSON) */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
-                <Database size={18} /> Copias de Seguridad (Respaldos JSON)
-              </h2>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-primary/80 bg-primary/10 px-2 py-0.5 rounded-full">
-                JSON Portátil
-              </span>
-            </div>
-            <p className="text-[11px] text-on-surface-variant/70 leading-relaxed">
-              Exporta un snapshot completo de tus datos para tener una copia externa segura o restáuralo en cualquier momento.
-            </p>
-            <div className="wavy-divider opacity-30"></div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleDownloadBackup}
-                className="py-2.5 px-3 bg-surface-container text-primary hover:bg-primary/10 border border-primary/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer"
-              >
-                <Download size={14} />
-                Descargar Respaldo JSON
-              </button>
-
-              <button
-                type="button"
-                onClick={() => backupImportRef.current?.click()}
-                className="py-2.5 px-3 bg-surface-container text-on-surface hover:bg-surface-container-high border border-outline-variant/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer"
-              >
-                <Upload size={14} />
-                Restaurar desde JSON
-              </button>
-              <input
-                ref={backupImportRef}
-                type="file"
-                accept=".json,application/json"
-                onChange={handleImportBackup}
-                className="hidden"
-              />
-            </div>
-          </div>
-
-          {/* TARJETA 6: Auditoría Completa de Precios */}
+          {/* TARJETA: Auditoría Completa de Precios */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -909,12 +609,12 @@ export const Ajustes: React.FC<AjustesProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
           {/* Categorías de Egresos */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+          <div className="bg-surface-container-lowest border border-outline-variant/35 p-4 sm:p-6 rounded-3xl hard-shadow space-y-4">
             <h3 className="font-serif text-sm font-bold text-primary flex items-center gap-1.5">
               <CreditCard size={15} /> Categorías de Egresos
             </h3>
 
-            <form onSubmit={handleCreateCategory} className="flex gap-2">
+            <form onSubmit={handleCreateCategory} className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={newCat}
@@ -923,11 +623,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   if (catError) setCatError('');
                 }}
                 placeholder="Nueva categoría..."
-                className="flex-1 bg-surface-container-low text-base sm:text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-medium min-h-[44px]"
+                className="w-full sm:flex-1 min-w-0 bg-surface-container-low text-base sm:text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-medium min-h-[44px]"
               />
               <button
                 type="submit"
-                className="py-2 px-4 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center gap-1 min-h-[44px] cursor-pointer"
+                className="w-full sm:w-auto shrink-0 py-2 px-4 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer shadow-xs active:scale-[0.98]"
               >
                 <Plus size={14} /> Agregar
               </button>
@@ -956,12 +656,12 @@ export const Ajustes: React.FC<AjustesProps> = ({
           </div>
 
           {/* Métodos de Pago */}
-          <div className="bg-surface-container-lowest border border-outline-variant/35 p-6 rounded-3xl hard-shadow space-y-4">
+          <div className="bg-surface-container-lowest border border-outline-variant/35 p-4 sm:p-6 rounded-3xl hard-shadow space-y-4">
             <h3 className="font-serif text-sm font-bold text-primary flex items-center gap-1.5">
               <CreditCard size={15} /> Métodos de Pago Habilitados
             </h3>
 
-            <form onSubmit={handleCreatePaymentMethod} className="flex gap-2">
+            <form onSubmit={handleCreatePaymentMethod} className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={newMethod}
@@ -970,11 +670,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
                   if (methodError) setMethodError('');
                 }}
                 placeholder="Nuevo método de pago..."
-                className="flex-1 bg-surface-container-low text-base sm:text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-medium min-h-[44px]"
+                className="w-full sm:flex-1 min-w-0 bg-surface-container-low text-base sm:text-xs py-2 px-3 rounded-xl border border-outline-variant/30 focus:outline-none focus:border-primary font-medium min-h-[44px]"
               />
               <button
                 type="submit"
-                className="py-2 px-4 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center gap-1 min-h-[44px] cursor-pointer"
+                className="w-full sm:w-auto shrink-0 py-2 px-4 bg-primary text-white rounded-xl text-xs font-bold hover:bg-primary/95 transition-all flex items-center justify-center gap-1.5 min-h-[44px] cursor-pointer shadow-xs active:scale-[0.98]"
               >
                 <Plus size={14} /> Agregar
               </button>
@@ -1005,30 +705,6 @@ export const Ajustes: React.FC<AjustesProps> = ({
         </div>
       </div>
 
-      {/* ZONA DE MANTENIMIENTO: Restablecer base de datos */}
-      {onResetDatabase && (
-        <div className="border border-terracotta/20 bg-terracotta/5 p-6 rounded-3xl space-y-3">
-          <div className="flex items-center gap-2 text-terracotta font-serif font-bold text-sm">
-            <AlertCircle size={16} />
-            <span>Zona de Mantenimiento</span>
-          </div>
-          <p className="text-xs text-on-surface-variant leading-relaxed">
-            Si deseas reiniciar los registros de prueba o comenzar desde un estado completamente limpio en la nube.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm('¿Estás segura de que deseas restablecer los datos a un estado limpio? Esta acción es irreversible.')) {
-                onResetDatabase();
-              }
-            }}
-            className="py-2.5 px-4 bg-terracotta/90 text-white rounded-xl text-xs font-bold hover:bg-terracotta transition-all flex items-center gap-1.5 min-h-[44px] cursor-pointer"
-          >
-            <Trash2 size={14} />
-            Restablecer Registros a Estado Limpio
-          </button>
-        </div>
-      )}
       {/* Modal de Recorte y Encuadre de Foto */}
       {cropModalOpen && pendingImageSrc && (
         <ImageCropModal
