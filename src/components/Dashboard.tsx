@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { FinancialMovement, Client } from '../types';
 import { Plus, Minus, Search, Filter, Trash2, ArrowUpRight, ArrowDownRight, TrendingUp, DollarSign, Wallet, Calendar, AlertCircle, Sparkles, Calculator, Percent, Info, HelpCircle, ChevronDown } from 'lucide-react';
 import { useDebounce } from '../hooks/useDebounce';
-import { formatMoney } from '../utils/formatters';
+import { formatMoney, todayLocalISO } from '../utils/formatters';
 import { Modal } from './Modal';
 import { SelectField } from './ui/SelectField';
 
@@ -38,7 +38,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Form states for New Income with Margin Estimator
   const [incomeAmount, setIncomeAmount] = useState('');
-  const [incomeDate, setIncomeDate] = useState(new Date().toISOString().split('T')[0]);
+  const [incomeDate, setIncomeDate] = useState(() => todayLocalISO());
   const [incomeDesc, setIncomeDesc] = useState('');
   const [incomeCategory, setIncomeCategory] = useState('Manicura Rusa');
   const [incomeMethod, setIncomeMethod] = useState('TRANSFERENCIA');
@@ -50,7 +50,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Form states for New Expense
   const [expenseAmount, setExpenseAmount] = useState('');
-  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split('T')[0]);
+  const [expenseDate, setExpenseDate] = useState(() => todayLocalISO());
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseCategoryInput, setExpenseCategoryInput] = useState('Suministros & Esmaltes');
   const [expenseError, setExpenseError] = useState('');
@@ -434,7 +434,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="lg:col-span-7 bg-surface-container-lowest border border-outline-variant/35 p-3.5 sm:p-5 lg:p-6 rounded-2xl sm:rounded-3xl hard-shadow space-y-3 sm:space-y-4">
               <div>
                 <h4 className="font-serif text-sm sm:text-base font-black text-primary">Análisis de Rentabilidad por Servicio</h4>
-                <p className="text-[9px] sm:text-[10px] uppercase tracking-wider sm:tracking-widest text-on-surface-variant/65 font-bold mt-0.5">Servicios ordenados por su margen neto (%) real</p>
               </div>
 
               <div className="wavy-divider opacity-30"></div>
@@ -765,7 +764,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <form onSubmit={handleIncomeSubmit} className="lg:col-span-7 bg-surface-container-lowest border border-outline-variant/40 p-4 sm:p-6 rounded-2xl sm:rounded-3xl hard-shadow space-y-3.5 sm:space-y-4">
             <div className="text-center pb-1">
               <h3 className="font-serif text-base sm:text-lg font-black text-primary">Registrar Turno Cobrado o Venta</h3>
-              <p className="text-[10px] sm:text-[11px] text-on-surface-variant/70 mt-0.5">Completa los datos de facturación para auditoría neta de caja</p>
             </div>
 
             <div className="wavy-divider opacity-30"></div>
@@ -927,7 +925,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="bg-primary/5 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-primary/10 flex justify-between items-center text-xs">
                 <div>
                   <p className="font-bold text-primary text-[11px] sm:text-xs">Margen de Retorno Estimado</p>
-                  <p className="text-[9px] text-on-surface-variant/60 font-semibold mt-0.5">Ganancia pura tras deducir costos</p>
                 </div>
                 <div className="text-right">
                   <h4 className="font-serif text-base sm:text-lg font-black text-primary">{formatMoney(estimatorValues.netMargin)}</h4>
@@ -953,7 +950,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="max-w-xl mx-auto bg-surface-container-lowest border border-outline-variant/40 p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl hard-shadow space-y-3.5 sm:space-y-4">
           <div className="text-center pb-1">
             <h3 className="font-serif text-base sm:text-lg font-black text-terracotta">Registrar Gasto Operativo</h3>
-            <p className="text-[10px] sm:text-[11px] text-on-surface-variant/70 mt-0.5">Controla las compras de insumos, publicidad y expensas fijos</p>
           </div>
 
           <div className="wavy-divider opacity-30"></div>

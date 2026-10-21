@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Service, Extra } from '../types';
 import { Plus, Sparkles, Tag, Calendar, ChevronDown, ChevronUp, Clock, Trash2, Globe, Layers, X, AlertTriangle } from 'lucide-react';
-import { formatMoney } from '../utils/formatters';
+import { formatMoney, todayLocalISO } from '../utils/formatters';
 import { Modal } from './Modal';
 import { useToast } from './Toast';
 import { SelectField } from './ui/SelectField';
@@ -45,7 +45,7 @@ export const Servicios: React.FC<ServiciosProps> = ({
 
   // Update Price Form state with audit reason
   const [updatePriceVal, setUpdatePriceVal] = useState('');
-  const [updatePriceDate, setUpdatePriceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [updatePriceDate, setUpdatePriceDate] = useState(() => todayLocalISO());
   const [updatePriceReason, setUpdatePriceReason] = useState('');
   const [updatingServiceId, setUpdatingServiceId] = useState<string | null>(null);
 
@@ -58,7 +58,7 @@ export const Servicios: React.FC<ServiciosProps> = ({
   // Extra price update state with audit
   const [updatingExtraId, setUpdatingExtraId] = useState<string | null>(null);
   const [updateExtraPriceVal, setUpdateExtraPriceVal] = useState('');
-  const [updateExtraPriceDate, setUpdateExtraPriceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [updateExtraPriceDate, setUpdateExtraPriceDate] = useState(() => todayLocalISO());
   const [updateExtraPriceReason, setUpdateExtraPriceReason] = useState('');
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -189,7 +189,6 @@ export const Servicios: React.FC<ServiciosProps> = ({
               <Sparkles className="text-primary-container" size={16} />
               Agregar Tratamiento al Catálogo
             </h3>
-            <p className="text-[11px] text-on-surface-variant/70 mt-1">Inserta los datos iniciales y duración aproximada para la reserva</p>
           </div>
 
           <div className="wavy-divider opacity-40 mb-6"></div>
@@ -298,7 +297,7 @@ export const Servicios: React.FC<ServiciosProps> = ({
       )}
 
       {/* SERVICES LISTING GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
         {services.map((service) => {
           const isExtrasExpanded = expandedSection?.serviceId === service.id && expandedSection?.type === 'extras';
           const isPricesExpanded = expandedSection?.serviceId === service.id && expandedSection?.type === 'prices';
@@ -310,18 +309,18 @@ export const Servicios: React.FC<ServiciosProps> = ({
           return (
             <div
               key={service.id}
-              className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl overflow-hidden hard-shadow flex flex-col justify-between transition-all duration-300"
+              className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl overflow-hidden hard-shadow flex flex-col justify-between h-full transition-all duration-300"
             >
               <div className="p-5 space-y-3">
                 {/* Header: Title & Action */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span className="w-2.5 h-2.5 rounded-full bg-primary/40 flex-shrink-0"></span>
-                    <h4 className="font-serif text-sm font-bold text-on-surface tracking-wide">{service.name}</h4>
+                    <h4 className="font-serif text-sm font-bold text-on-surface tracking-wide break-words line-clamp-2 min-w-0">{service.name}</h4>
                   </div>
                   <button
                     onClick={() => setServiceToDelete(service)}
-                    className="text-terracotta/70 hover:text-terracotta p-1 transition-colors rounded-lg hover:bg-terracotta/10 cursor-pointer"
+                    className="text-terracotta/70 hover:text-terracotta p-1 transition-colors rounded-lg hover:bg-terracotta/10 cursor-pointer shrink-0"
                     title="Eliminar servicio"
                   >
                     <Trash2 size={14} />
@@ -329,7 +328,7 @@ export const Servicios: React.FC<ServiciosProps> = ({
                 </div>
 
                 {/* Description */}
-                <p className="text-xs text-on-surface-variant/80 font-medium leading-relaxed min-h-[38px]">
+                <p className="text-xs text-on-surface-variant/80 font-medium leading-relaxed line-clamp-2">
                   {service.description}
                 </p>
 

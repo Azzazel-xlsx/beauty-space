@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { Client } from '../types';
 import { isValidUUID } from '../utils/uuid';
+import { toLocalISODate, todayLocalISO } from '../utils/formatters';
 
 const mapRow = (row: any): Client => ({
   id: row.id,
@@ -9,7 +10,7 @@ const mapRow = (row: any): Client => ({
   email: row.email ?? '',
   notes: row.notes ?? '',
   photoUrl: row.photo_url ?? '',
-  createdAt: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+  createdAt: row.created_at ? toLocalISODate(new Date(row.created_at)) : todayLocalISO(),
 });
 
 export const clientsService = {

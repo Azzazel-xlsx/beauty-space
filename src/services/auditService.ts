@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { PriceChangeEvent } from '../types';
 import { isValidUUID } from '../utils/uuid';
+import { todayLocalISO } from '../utils/formatters';
 
 const mapRow = (row: any): PriceChangeEvent => ({
   id: row.id,
@@ -38,7 +39,7 @@ export const auditService = {
       name: eventData.name,
       old_price: eventData.oldPrice,
       new_price: eventData.newPrice,
-      date: eventData.date || new Date().toISOString().split('T')[0],
+      date: eventData.date || todayLocalISO(),
       changed_by: eventData.user || 'Administradora',
       reason: eventData.reason || '',
     };

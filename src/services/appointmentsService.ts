@@ -28,13 +28,30 @@ const mapRow = (row: any): Appointment => ({
 
 export const appointmentsService = {
   async getAppointments(): Promise<Appointment[]> {
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('*, appointment_extras(*)')
-      .order('date', { ascending: false })
-      .order('time', { ascending: true });
-    if (error) throw error;
-    return (data ?? []).map(mapRow);
+    const allRows: any[] = [];
+    const pageSize = 1000;
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*, appointment_extras(*)')
+        .order('date', { ascending: false })
+        .order('time', { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+      const rows = data ?? [];
+      allRows.push(...rows);
+      if (rows.length < pageSize) {
+        hasMore = false;
+      } else {
+        from += pageSize;
+      }
+    }
+
+    return allRows.map(mapRow);
   },
 
   async getAppointmentById(id: string): Promise<Appointment | null> {

@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Client, Appointment, Service, SpecialPrice } from '../types';
-import { Plus, Search, Calendar, Phone, Mail, FileText, Sparkles, Tag, ArrowLeft, Heart, PenTool, Check, AlertTriangle, Trash2, Award, MessageSquare, User, ChevronDown, Camera, Upload, RotateCcw } from 'lucide-react';
+import { Plus, Search, Calendar, Phone, Mail, FileText, Sparkles, Tag, ArrowLeft, Heart, PenTool, Check, AlertTriangle, Trash2, Award, MessageSquare, User, ChevronDown, Camera, Upload, RotateCcw, History } from 'lucide-react';
 import { generateId } from '../utils/id';
 import { useDebounce } from '../hooks/useDebounce';
 import { formatMoney } from '../utils/formatters';
+import { getClientServiceHistory } from '../utils/clientHistory';
+import { ClientServiceHistory } from './ClientServiceHistory';
 import { useToast } from './Toast';
 import { supabase } from '../lib/supabaseClient';
 import { SelectField } from './ui/SelectField';
@@ -277,6 +279,12 @@ export const Clientas: React.FC<ClientasProps> = ({
     };
   }, [selectedClientId, appointments, specialPrices]);
 
+  // Client completed service history
+  const clientServiceHistory = useMemo(() => {
+    if (!selectedClientId) return [];
+    return getClientServiceHistory(appointments, services, selectedClientId);
+  }, [selectedClientId, appointments, services]);
+
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || !newPhone) {
@@ -480,7 +488,6 @@ export const Clientas: React.FC<ClientasProps> = ({
                     </div>
                     <div>
                       <h4 className="font-serif text-base font-black text-on-surface">Fidelidad</h4>
-                      <p className="text-[10px] text-on-surface-variant/60 font-semibold">Índice de lealtad y constancia</p>
                     </div>
                   </div>
                   <span className="font-serif text-2xl font-black text-primary">
@@ -502,16 +509,6 @@ export const Clientas: React.FC<ClientasProps> = ({
                     <span>VIP (100%)</span>
                   </div>
                 </div>
-
-                <div className="bg-primary/5 p-3.5 rounded-2xl border border-primary/10">
-                  <p className="text-xs text-primary font-bold">
-                    {clientStats.loyaltyScore >= 75
-                      ? 'Nivel Diamante: Constancia sobresaliente y máxima prioridad de atención.'
-                      : clientStats.loyaltyScore >= 40
-                      ? 'Nivel Recurrente: Visitas habituales y fidelización consolidada.'
-                      : 'Nivel Inicial: En etapa de bienvenida y fidelización.'}
-                  </p>
-                </div>
               </div>
 
               {/* FRECUENCIA */}
@@ -523,7 +520,6 @@ export const Clientas: React.FC<ClientasProps> = ({
                     </div>
                     <div>
                       <h4 className="font-serif text-base font-black text-on-surface">Frecuencia</h4>
-                      <p className="text-[10px] text-on-surface-variant/60 font-semibold">Historial de asistencia al salón</p>
                     </div>
                   </div>
                   <span className="font-serif text-2xl font-black text-on-surface">
@@ -541,18 +537,22 @@ export const Clientas: React.FC<ClientasProps> = ({
                     <h5 className="font-serif text-lg font-black text-on-surface mt-1">{formatMoney(clientStats.totalSpent)}</h5>
                   </div>
                 </div>
-
-                <p className="text-xs text-on-surface-variant/70 font-semibold leading-relaxed">
-                  {clientStats.visitsCount >= 5
-                    ? 'Excelente constancia de turnos periódicos registrados en el estudio.'
-                    : clientStats.visitsCount > 0
-                    ? 'Clienta con citas previas registradas en el sistema.'
-                    : 'Aún no registra turnos completados.'}
-                </p>
               </div>
 
             </div>
           )}
+
+          {/* HISTORIAL DE SERVICIOS */}
+          <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-3xl p-6 hard-shadow space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                <History size={18} />
+              </div>
+              <h4 className="font-serif text-base font-black text-on-surface">Historial de Servicios</h4>
+            </div>
+
+            <ClientServiceHistory entries={clientServiceHistory} />
+          </div>
 
           {/* 3. SECCIÓN: BOX PARA COMENTARIOS PERSONALIZADOS */}
           <div className="bg-surface-container-lowest border border-outline-variant/35 rounded-3xl p-6 hard-shadow space-y-4">
@@ -563,7 +563,6 @@ export const Clientas: React.FC<ClientasProps> = ({
                 </div>
                 <div>
                   <h4 className="font-serif text-base font-black text-on-surface">Comentarios Personalizados</h4>
-                  <p className="text-[10px] text-on-surface-variant/60 font-semibold">Notas privadas, preferencias, estilo o consideraciones especiales</p>
                 </div>
               </div>
 
@@ -625,7 +624,7 @@ export const Clientas: React.FC<ClientasProps> = ({
                   </p>
                 ) : (
                   <p className="text-xs text-on-surface-variant/50 font-medium italic">
-                    No hay comentarios personalizados guardados para esta clienta. Haz clic en "Editar Comentario" para agregar anotaciones.
+                    Sin comentarios.
                   </p>
                 )}
               </div>
@@ -641,7 +640,6 @@ export const Clientas: React.FC<ClientasProps> = ({
                 </div>
                 <div>
                   <h4 className="font-serif text-base font-black text-on-surface">Precios Especiales para esta Clienta</h4>
-                  <p className="text-[10px] text-on-surface-variant/60 font-semibold">Tarifas preferenciales exclusivas vinculadas a su perfil</p>
                 </div>
               </div>
 
@@ -1192,7 +1190,7 @@ export const Clientas: React.FC<ClientasProps> = ({
             })}
 
             {filteredClients.length === 0 && (
-              <div className="col-span-3 text-center py-16 bg-surface-container/20 border border-dashed border-outline-variant/30 rounded-2xl text-xs text-on-surface-variant/50 font-semibold">
+              <div className="col-span-full text-center py-16 bg-surface-container/20 border border-dashed border-outline-variant/30 rounded-2xl text-xs text-on-surface-variant/50 font-semibold">
                 No se encontraron clientas registradas con el término o segmento seleccionado.
               </div>
             )}

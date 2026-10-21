@@ -18,13 +18,17 @@ import {
   RefreshCw,
   BellRing,
   BellOff,
-  Smartphone
+  Smartphone,
+  Activity,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { formatMoney } from '../utils/formatters';
 import { useToast } from './Toast';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { ImageCropModal } from './ui/ImageCropModal';
 import { usePushSubscription } from '../hooks/usePushSubscription';
+import { PushDiagnosticPanel } from './ui/PushDiagnosticPanel';
 
 interface AjustesProps {
   priceChanges: PriceChangeEvent[];
@@ -78,6 +82,7 @@ export const Ajustes: React.FC<AjustesProps> = ({
 
   // Web Push Subscription Hook
   const [testingPush, setTestingPush] = useState(false);
+  const [showDiagnosticPanel, setShowDiagnosticPanel] = useState(false);
   const {
     isSupported: isPushSupported,
     permission: pushPermission,
@@ -86,7 +91,11 @@ export const Ajustes: React.FC<AjustesProps> = ({
     error: pushError,
     subscribe: subscribePush,
     unsubscribe: unsubscribePush,
-    sendTestNotification
+    sendTestNotification,
+    diagnostics,
+    runningDiagnostics,
+    runDiagnostics,
+    requestPermissionOnly
   } = usePushSubscription();
 
   const handleTogglePush = async () => {
@@ -687,12 +696,34 @@ export const Ajustes: React.FC<AjustesProps> = ({
                 {testingPush ? 'Enviando prueba...' : 'Enviar Notificación de Prueba'}
               </button>
 
-              <div className="text-right">
-                <span className="text-[10px] text-on-surface-variant/50 block font-mono">
-                  Service Worker: /sw.js • VAPID Web Push
-                </span>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextState = !showDiagnosticPanel;
+                  setShowDiagnosticPanel(nextState);
+                  if (nextState && !diagnostics) {
+                    runDiagnostics();
+                  }
+                }}
+                className="py-2 px-3.5 bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-primary rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-outline-variant/25 min-h-[40px]"
+              >
+                <Activity size={13} className="text-primary" />
+                <span>{showDiagnosticPanel ? 'Ocultar Diagnóstico' : 'Diagnóstico Push & VAPID'}</span>
+                {showDiagnosticPanel ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
             </div>
+
+            {/* Panel de Diagnóstico Integrado */}
+            {showDiagnosticPanel && (
+              <div className="pt-2 animate-fadeIn">
+                <PushDiagnosticPanel
+                  diagnostics={diagnostics}
+                  running={runningDiagnostics}
+                  onRunDiagnostics={runDiagnostics}
+                  onRequestPermission={requestPermissionOnly}
+                />
+              </div>
+            )}
           </div>
 
           {/* TARJETA: Auditoría Completa de Precios */}
@@ -702,9 +733,6 @@ export const Ajustes: React.FC<AjustesProps> = ({
                 <h2 className="font-serif text-[length:var(--text-fluid-h2)] font-black text-primary flex items-center gap-2">
                   <ClipboardList size={18} /> Auditoría de Precios
                 </h2>
-                <p className="text-[10px] uppercase tracking-widest text-on-surface-variant/60 font-bold mt-0.5">
-                  Historial de cambios de tarifas
-                </p>
               </div>
               <span className="text-[9px] font-black bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 rounded-full uppercase">
                 {priceChanges.length} Cambios

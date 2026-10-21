@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
 import { Extra } from '../types';
 import { isValidUUID } from '../utils/uuid';
+import { todayLocalISO } from '../utils/formatters';
 
 const mapRow = (row: any): Extra => ({
   id: row.id,
@@ -64,14 +65,14 @@ export const extrasService = {
     const historyEntry = (extraData.priceHistory && extraData.priceHistory.length > 0)
       ? extraData.priceHistory[0]
       : {
-          date: new Date().toISOString().split('T')[0],
+          date: todayLocalISO(),
           price: pricePerNail,
           reason: extraData.initialReason || 'Tarifa inicial registrada.',
         };
 
     await supabase.from('extra_price_history').insert({
       extra_id: data.id,
-      date: historyEntry.date || new Date().toISOString().split('T')[0],
+      date: historyEntry.date || todayLocalISO(),
       price: historyEntry.price ?? pricePerNail,
       reason: historyEntry.reason || 'Tarifa inicial registrada.',
     });

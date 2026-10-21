@@ -1,12 +1,15 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Appointment, Client, Service, SpecialPrice, Extra, AppointmentExtra } from '../types';
 import {
   Plus, ChevronLeft, ChevronRight, MapPin, Clock, CheckCircle2,
   Sparkles, AlertCircle, Sparkle, RefreshCw, AlertTriangle, Trash2, X,
-  Minus, Layers, Eye
+  Minus, Layers, Eye, Search
 } from 'lucide-react';
 import { generateId } from '../utils/id';
-import { formatMoney } from '../utils/formatters';
+import { formatMoney, todayLocalISO, parseLocalDate, formatDate } from '../utils/formatters';
+import { useDebounce } from '../hooks/useDebounce';
+import { searchClients, getClientServiceHistory } from '../utils/clientHistory';
+import { ClientServiceHistory } from './ClientServiceHistory';
 import { Modal } from './Modal';
 import { AppointmentDetailModal } from './AppointmentDetailModal';
 import { SelectField } from './ui/SelectField';
@@ -54,9 +57,26 @@ export const Agenda: React.FC<AgendaProps> = ({
   }, []);
 
   // Calendar states
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 15)); // Default to July 2026 for alignment with seed dates
-  const [selectedDateStr, setSelectedDateStr] = useState('2026-07-15');
+  const [currentDate, setCurrentDate] = useState(() => parseLocalDate(todayLocalISO()));
+  const [selectedDateStr, setSelectedDateStr] = useState(() => todayLocalISO());
   const [showAddForm, setShowAddForm] = useState(false);
+
+  // Client Search & History State (Header Inline Search)
+  const [showClientSearch, setShowClientSearch] = useState(false);
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const debouncedClientSearch = useDebounce(clientSearchQuery, 200);
+  const [historyClientId, setHistoryClientId] = useState<string | null>(null);
+  const clientSearchInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus search input when toggled open
+  useEffect(() => {
+    if (showClientSearch) {
+      setTimeout(() => clientSearchInputRef.current?.focus(), 50);
+    } else {
+      setClientSearchQuery('');
+      setHistoryClientId(null);
+    }
+  }, [showClientSearch]);
 
   // New Appointment Form State
   const [selectedClient, setSelectedClient] = useState('');
@@ -141,6 +161,22 @@ export const Agenda: React.FC<AgendaProps> = ({
     }
     return null;
   }, [rescheduleTime, rescheduleDuration, rescheduleDate, appointments, clients, selectedApptForReschedule]);
+
+  // Client Search & History Memoized Calculations
+  const searchedClients = useMemo(() => {
+    if (!debouncedClientSearch.trim()) return [];
+    return searchClients(clients, debouncedClientSearch, 8);
+  }, [clients, debouncedClientSearch]);
+
+  const historyEntries = useMemo(() => {
+    if (!historyClientId) return [];
+    return getClientServiceHistory(appointments, services, historyClientId);
+  }, [appointments, services, historyClientId]);
+
+  const selectedHistoryClient = useMemo(() => {
+    if (!historyClientId) return null;
+    return clients.find((c) => c.id === historyClientId) || null;
+  }, [clients, historyClientId]);
 
   // Auto-detect special VIP price
   const activeSpecialPrice = useMemo(() => {
@@ -603,9 +639,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                 />
               </div>
             </div>
-            <p className="text-[9px] text-on-surface-variant/60 font-medium">
-              Se sumará automáticamente al importe total a cobrar
-            </p>
           </div>
         </div>
       </div>
@@ -673,6 +706,19 @@ export const Agenda: React.FC<AgendaProps> = ({
 
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
+                onClick={() => setShowClientSearch((prev) => !prev)}
+                className={`p-1.5 rounded-full transition-colors cursor-pointer active:scale-90 ${
+                  showClientSearch
+                    ? 'bg-primary text-white shadow-xs'
+                    : 'hover:bg-surface-container text-on-surface'
+                }`}
+                aria-label="Buscar clienta"
+                title="Buscar clienta e historial"
+              >
+                <Search size={18} />
+              </button>
+              <button
                 onClick={handlePrevMonth}
                 className="p-1.5 rounded-full hover:bg-surface-container text-on-surface transition-colors cursor-pointer active:scale-90"
                 aria-label="Mes anterior"
@@ -688,6 +734,130 @@ export const Agenda: React.FC<AgendaProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Inline Client Search with History */}
+          {showClientSearch && (
+            <div className="bg-surface-container-low/70 border border-outline-variant/30 rounded-2xl p-3 sm:p-4 space-y-3 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
+                  <input
+                    ref={clientSearchInputRef}
+                    type="text"
+                    value={clientSearchQuery}
+                    onChange={(e) => {
+                      setClientSearchQuery(e.target.value);
+                      if (historyClientId) setHistoryClientId(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        if (historyClientId) {
+                          setHistoryClientId(null);
+                        } else {
+                          setShowClientSearch(false);
+                          setClientSearchQuery('');
+                        }
+                      }
+                    }}
+                    placeholder="Buscar por nombre, teléfono o email..."
+                    className="w-full bg-surface-container-lowest text-xs py-2 pl-9 pr-8 rounded-xl border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary font-medium"
+                    autoFocus
+                  />
+                  {clientSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setClientSearchQuery('');
+                        setHistoryClientId(null);
+                        clientSearchInputRef.current?.focus();
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowClientSearch(false);
+                    setClientSearchQuery('');
+                    setHistoryClientId(null);
+                  }}
+                  className="text-on-surface-variant hover:text-on-surface p-1.5 rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
+                  title="Cerrar búsqueda (Esc)"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* History View for Selected Client */}
+              {historyClientId && selectedHistoryClient ? (
+                <div className="space-y-2 pt-1 border-t border-outline-variant/20">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-serif text-xs sm:text-sm font-bold text-primary truncate">
+                        {selectedHistoryClient.name}
+                      </span>
+                      <span className="font-mono text-[10px] text-on-surface-variant/50">
+                        {selectedHistoryClient.id.slice(0, 8)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryClientId(null)}
+                      className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                    >
+                      Volver a resultados
+                    </button>
+                  </div>
+
+                  <ClientServiceHistory entries={historyEntries} />
+                </div>
+              ) : debouncedClientSearch.trim() ? (
+                <div className="max-h-64 overflow-y-auto space-y-1 divide-y divide-outline-variant/15 pr-1">
+                  {searchedClients.length === 0 ? (
+                    <div className="py-3 text-center text-xs text-on-surface-variant/60">
+                      Sin resultados
+                    </div>
+                  ) : (
+                    searchedClients.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setHistoryClientId(c.id)}
+                        className="w-full text-left pt-2 first:pt-0 p-2 hover:bg-surface-container rounded-xl transition-colors cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-serif text-xs font-bold text-on-surface group-hover:text-primary transition-colors truncate">
+                            {c.name}
+                          </span>
+                          <span className="font-mono text-[10px] text-on-surface-variant/50 shrink-0">
+                            {c.id.slice(0, 8)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-on-surface-variant/75 mt-0.5 flex-wrap">
+                          {c.phone && <span>{c.phone}</span>}
+                          {c.email && c.email !== 'Sin email' && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate max-w-[140px]">{c.email}</span>
+                            </>
+                          )}
+                          {c.createdAt && (
+                            <>
+                              <span>•</span>
+                              <span>Registrada: {formatDate(c.createdAt)}</span>
+                            </>
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
 
           {/* Weekday Labels (Mon-Sun) */}
           <div className="grid grid-cols-7 text-center text-[10px] sm:text-xs font-bold uppercase tracking-wider text-on-surface-variant/60 pb-1 border-b border-outline-variant/20">
@@ -712,6 +882,7 @@ export const Agenda: React.FC<AgendaProps> = ({
               const dayNum = idx + 1;
               const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
               const isSelected = dayStr === selectedDateStr;
+              const isToday = dayStr === todayLocalISO();
               const dayAppts = appointmentsMap[dayStr] || [];
               const pendingCount = dayAppts.filter(a => a.status === 'pending').length;
               const completedCount = dayAppts.filter(a => a.status === 'completed').length;
@@ -726,10 +897,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                   className={`relative h-11 sm:h-13 rounded-xl sm:rounded-2xl p-1 flex flex-col justify-between items-center transition-all cursor-pointer select-none active:scale-95 ${
                     isSelected
                       ? 'bg-primary text-white shadow-sm ring-2 ring-primary ring-offset-2 ring-offset-surface'
+                      : isToday
+                      ? 'border border-primary/45 bg-primary/5 hover:bg-primary/10 text-on-surface'
                       : 'hover:bg-surface-container-low text-on-surface'
                   }`}
                 >
-                  <span className={`text-xs sm:text-sm font-bold ${isSelected ? 'text-white' : 'text-on-surface'}`}>
+                  <span className={`text-xs sm:text-sm font-bold ${isSelected ? 'text-white' : isToday ? 'text-primary' : 'text-on-surface'}`}>
                     {dayNum}
                   </span>
 
@@ -881,13 +1054,13 @@ export const Agenda: React.FC<AgendaProps> = ({
                       )}
 
                       {/* Button Row: Detalle & Extras + Action buttons */}
-                      <div className="flex items-center gap-1.5 border-t border-outline-variant/15 pt-2">
+                      <div className="flex items-center flex-wrap gap-1.5 border-t border-outline-variant/15 pt-2">
                         
                         {/* Detalle & Extras Button (Phase 2 core feature) */}
                         <button
                           type="button"
                           onClick={() => setDetailAppt(appt)}
-                          className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-surface-container-high hover:bg-surface-container-high/80 text-on-surface text-[10px] font-bold tracking-wide transition-all cursor-pointer"
+                          className="shrink-0 whitespace-nowrap flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-surface-container-high hover:bg-surface-container-high/80 text-on-surface text-[10px] font-bold tracking-wide transition-all cursor-pointer"
                           title="Ver y editar detalles, extras y desglose"
                         >
                           <Eye size={11} className="text-primary" />
@@ -905,7 +1078,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 setCompletionPaymentMethod('TRANSFERENCIA');
                                 setCompletionCommissionPercent('15');
                               }}
-                              className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-sage text-white text-[10px] font-bold tracking-wide hover:bg-sage/95 active:scale-95 transition-all shadow-xs cursor-pointer"
+                              className="shrink-0 whitespace-nowrap flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-sage text-white text-[10px] font-bold tracking-wide hover:bg-sage/95 active:scale-95 transition-all shadow-xs cursor-pointer min-w-[70px]"
                             >
                               <CheckCircle2 size={12} />
                               <span>Cobrar</span>
@@ -920,7 +1093,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 setRescheduleTime(appt.time);
                                 setRescheduleDuration(appt.duration.toString());
                               }}
-                              className="p-1.5 rounded-xl border border-gold/45 text-[10px] text-gold-dark font-bold hover:bg-gold/10 active:scale-95 transition-all cursor-pointer"
+                              className="shrink-0 whitespace-nowrap p-1.5 rounded-xl border border-gold/45 text-[10px] text-gold-dark font-bold hover:bg-gold/10 active:scale-95 transition-all cursor-pointer"
                               title="Reagendar turno"
                             >
                               <RefreshCw size={11} />
@@ -930,7 +1103,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                             <button
                               type="button"
                               onClick={() => setApptToDelete(appt)}
-                              className="p-1.5 rounded-xl border border-terracotta/35 text-[10px] text-terracotta font-bold hover:bg-terracotta/10 active:scale-95 transition-all cursor-pointer"
+                              className="shrink-0 whitespace-nowrap p-1.5 rounded-xl border border-terracotta/35 text-[10px] text-terracotta font-bold hover:bg-terracotta/10 active:scale-95 transition-all cursor-pointer"
                               title="Eliminar cita"
                               aria-label="Eliminar cita"
                             >
@@ -938,11 +1111,11 @@ export const Agenda: React.FC<AgendaProps> = ({
                             </button>
                           </>
                         ) : (
-                          <div className="flex-1 flex justify-end">
+                          <div className="flex-1 flex justify-end shrink-0 whitespace-nowrap">
                             <button
                               type="button"
                               onClick={() => setApptToDelete(appt)}
-                              className="text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer active:scale-90 flex items-center gap-1 text-[9px] font-semibold"
+                              className="shrink-0 whitespace-nowrap text-on-surface-variant/40 hover:text-terracotta p-1 hover:bg-terracotta/10 rounded-full transition-all cursor-pointer active:scale-90 flex items-center gap-1 text-[9px] font-semibold"
                               title="Eliminar cita"
                               aria-label="Eliminar cita"
                             >

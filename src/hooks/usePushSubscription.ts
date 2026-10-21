@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { pushService } from '../services/pushService';
+import { pushService, PushDiagnostics } from '../services/pushService';
 
 export function usePushSubscription() {
   const [isSupported, setIsSupported] = useState<boolean>(false);
@@ -7,6 +7,8 @@ export function usePushSubscription() {
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<PushDiagnostics | null>(null);
+  const [runningDiagnostics, setRunningDiagnostics] = useState<boolean>(false);
 
   // Inicializar estado del Service Worker y suscripción actual
   const checkStatus = useCallback(async () => {
@@ -29,9 +31,30 @@ export function usePushSubscription() {
     }
   }, []);
 
+  const runDiagnostics = useCallback(async (): Promise<PushDiagnostics> => {
+    setRunningDiagnostics(true);
+    try {
+      const diag = await pushService.runDiagnostics();
+      setDiagnostics(diag);
+      setPermission(diag.notificationPermission);
+      setIsSubscribed(diag.subscription.isSubscribed);
+      setIsSupported(diag.isPushSupported);
+      return diag;
+    } finally {
+      setRunningDiagnostics(false);
+    }
+  }, []);
+
   useEffect(() => {
     checkStatus();
   }, [checkStatus]);
+
+  const requestPermissionOnly = async (): Promise<NotificationPermission> => {
+    const res = await pushService.requestPermissionOnly();
+    setPermission(res);
+    await checkStatus();
+    return res;
+  };
 
   const subscribe = async (): Promise<boolean> => {
     setLoading(true);
@@ -40,6 +63,7 @@ export function usePushSubscription() {
       await pushService.subscribe();
       setIsSubscribed(true);
       setPermission(pushService.getPermission());
+      await runDiagnostics();
       return true;
     } catch (err: any) {
       const msg = err?.message || 'No se pudo activar las notificaciones push';
@@ -58,6 +82,7 @@ export function usePushSubscription() {
     try {
       await pushService.unsubscribe();
       setIsSubscribed(false);
+      await runDiagnostics();
       return true;
     } catch (err: any) {
       setError(err?.message || 'Error desactivando las notificaciones');
@@ -86,6 +111,11 @@ export function usePushSubscription() {
     subscribe,
     unsubscribe,
     sendTestNotification,
-    refreshStatus: checkStatus
+    refreshStatus: checkStatus,
+    diagnostics,
+    runningDiagnostics,
+    runDiagnostics,
+    requestPermissionOnly
   };
 }
+

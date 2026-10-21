@@ -11,6 +11,22 @@ export const formatMoney = (val: number): string => {
   }).format(num);
 };
 
+export const toLocalISODate = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+export const todayLocalISO = (): string => {
+  return toLocalISODate(new Date());
+};
+
+export const parseLocalDate = (iso: string): Date => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
 export const formatDate = (dateStr: string): string => {
   if (!dateStr) return '';
   const parts = dateStr.split('-');
