@@ -37,6 +37,8 @@ const INACTIVITY_WARNING_MS = 4 * 60 * 1000; // Aviso al minuto 4 (1 minuto rest
 
 export default function App() {
   const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [activeTab, setActiveTab] = useState('finanzas');
 
   // Supabase Authentication state
@@ -170,7 +172,7 @@ export default function App() {
 
       console.error('Error cargando datos de Supabase:', err);
       setDataError(err?.message || 'Error al conectar con la base de datos en la nube.');
-      toast.error('Error al sincronizar datos en la nube.');
+      toastRef.current.error('Error al sincronizar datos en la nube.');
     } finally {
       const elapsed = Date.now() - startedAt;
       if (elapsed < MIN_SYNC_SCREEN_MS) {
@@ -178,7 +180,7 @@ export default function App() {
       }
       setIsLoadingData(false);
     }
-  }, [toast]);
+  }, []);
 
   // Load data as soon as authenticated
   useEffect(() => {
@@ -464,14 +466,18 @@ export default function App() {
   };
 
   // ==================== WORKFLOW: APPOINTMENTS ====================
-  const handleAddAppointment = async (newAppt: Omit<Appointment, 'id'> & { id?: string }) => {
+  const handleAddAppointment = async (
+    newAppt: Omit<Appointment, 'id'> & { id?: string }
+  ): Promise<Appointment | null> => {
     try {
       const created = await appointmentsService.createAppointment(newAppt);
       setAppointments((prev) => [created, ...prev]);
       toast.success('Cita agendada con éxito.');
+      return created;
     } catch (err: any) {
       console.error('Error agendando cita:', err);
       toast.error(`Error al agendar cita: ${err?.message}`);
+      return null;
     }
   };
 
@@ -480,7 +486,7 @@ export default function App() {
     status: Appointment['status'],
     cancelReason?: string,
     rescheduledToId?: string
-  ) => {
+  ): Promise<void> => {
     const targetAppt = appointments.find((a) => a.id === id);
     if (!targetAppt) return;
 

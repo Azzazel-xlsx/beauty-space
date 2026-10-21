@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Client, Appointment, Service, SpecialPrice } from '../types';
 import { Plus, Search, Calendar, Phone, Mail, FileText, Sparkles, Tag, ArrowLeft, Heart, PenTool, Check, AlertTriangle, Trash2, Award, MessageSquare, User, ChevronDown, Camera, Upload, RotateCcw, History } from 'lucide-react';
-import { generateId } from '../utils/id';
 import { useDebounce } from '../hooks/useDebounce';
 import { formatMoney } from '../utils/formatters';
 import { getClientServiceHistory } from '../utils/clientHistory';
@@ -69,7 +68,6 @@ export const Clientas: React.FC<ClientasProps> = ({
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isDragOverPhoto, setIsDragOverPhoto] = useState(false);
   const [formError, setFormError] = useState('');
-  const [newClientId, setNewClientId] = useState<string>(() => generateId('client'));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Existing client detail photo upload state
@@ -86,9 +84,10 @@ export const Clientas: React.FC<ClientasProps> = ({
       setIsUploadingPhoto(true);
       setFormError('');
 
+      const uploadId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `upload_${Date.now()}`;
       const { error } = await supabase.storage
         .from('salon-media')
-        .upload(`clients/${newClientId}.webp`, file, { upsert: true });
+        .upload(`clients/${uploadId}.webp`, file, { upsert: true });
 
       if (error) {
         console.error('Error subiendo foto de clienta a Supabase Storage:', error);
@@ -99,7 +98,7 @@ export const Clientas: React.FC<ClientasProps> = ({
 
       const { data } = supabase.storage
         .from('salon-media')
-        .getPublicUrl(`clients/${newClientId}.webp`);
+        .getPublicUrl(`clients/${uploadId}.webp`);
 
       const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
       setCustomPhoto(publicUrl);
@@ -302,7 +301,6 @@ export const Clientas: React.FC<ClientasProps> = ({
     }
 
     onAddClient({
-      id: newClientId,
       name: newName,
       phone: newPhone,
       email: newEmail || 'Sin email',
@@ -317,7 +315,6 @@ export const Clientas: React.FC<ClientasProps> = ({
     setNewNotes('');
     setAvatarIndex(0);
     setCustomPhoto(null);
-    setNewClientId(generateId('client'));
     setFormError('');
     setShowAddForm(false);
   };

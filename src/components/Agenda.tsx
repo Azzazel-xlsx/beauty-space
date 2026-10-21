@@ -5,7 +5,6 @@ import {
   Sparkles, AlertCircle, Sparkle, RefreshCw, AlertTriangle, Trash2, X,
   Minus, Layers, Eye, Search
 } from 'lucide-react';
-import { generateId } from '../utils/id';
 import { formatMoney, todayLocalISO, parseLocalDate, formatDate } from '../utils/formatters';
 import { useDebounce } from '../hooks/useDebounce';
 import { searchClients, getClientServiceHistory } from '../utils/clientHistory';
@@ -20,8 +19,8 @@ interface AgendaProps {
   services: Service[];
   extras: Extra[];
   specialPrices: SpecialPrice[];
-  onAddAppointment: (appointment: Omit<Appointment, 'id'> & { id?: string }) => void;
-  onUpdateAppointmentStatus: (id: string, status: Appointment['status'], cancelReason?: string, rescheduledToId?: string) => void;
+  onAddAppointment: (appointment: Omit<Appointment, 'id'> & { id?: string }) => Promise<Appointment | null>;
+  onUpdateAppointmentStatus: (id: string, status: Appointment['status'], cancelReason?: string, rescheduledToId?: string) => Promise<void>;
   onUpdateAppointmentExtras?: (
     appointmentId: string,
     updatedExtras: AppointmentExtra[],
@@ -97,6 +96,7 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduleTime, setRescheduleTime] = useState('10:00');
   const [rescheduleDuration, setRescheduleDuration] = useState('90');
+  const [isRescheduling, setIsRescheduling] = useState(false);
 
   // Complete appointment dialog state
   const [activeApptForCompletion, setActiveApptForCompletion] = useState<Appointment | null>(null);
@@ -347,30 +347,43 @@ export const Agenda: React.FC<AgendaProps> = ({
   };
 
   // Rescheduling submit logic
-  const handleRescheduleSubmit = (e: React.FormEvent) => {
+  const handleRescheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedApptForReschedule || !rescheduleDate || !rescheduleTime) {
+    if (!selectedApptForReschedule || !rescheduleDate || !rescheduleTime || isRescheduling) {
       return;
     }
 
-    const newApptId = generateId('appt');
-    onAddAppointment({
-      id: newApptId,
-      clientId: selectedApptForReschedule.clientId,
-      serviceId: selectedApptForReschedule.serviceId,
-      date: rescheduleDate,
-      time: rescheduleTime,
-      duration: parseInt(rescheduleDuration),
-      isHomeVisit: selectedApptForReschedule.isHomeVisit,
-      homeVisitFee: selectedApptForReschedule.homeVisitFee,
-      basePrice: selectedApptForReschedule.basePrice,
-      extras: selectedApptForReschedule.extras,
-      status: 'pending',
-      priceCharged: selectedApptForReschedule.priceCharged
-    });
+    setIsRescheduling(true);
+    try {
+      const created = await onAddAppointment({
+        clientId: selectedApptForReschedule.clientId,
+        serviceId: selectedApptForReschedule.serviceId,
+        date: rescheduleDate,
+        time: rescheduleTime,
+        duration: parseInt(rescheduleDuration),
+        isHomeVisit: selectedApptForReschedule.isHomeVisit,
+        homeVisitFee: selectedApptForReschedule.homeVisitFee,
+        basePrice: selectedApptForReschedule.basePrice,
+        extras: selectedApptForReschedule.extras,
+        status: 'pending',
+        priceCharged: selectedApptForReschedule.priceCharged,
+      });
 
-    onUpdateAppointmentStatus(selectedApptForReschedule.id, 'reagendada', 'Cliente reagendó el turno.', newApptId);
-    setSelectedApptForReschedule(null);
+      if (!created) {
+        return;
+      }
+
+      await onUpdateAppointmentStatus(
+        selectedApptForReschedule.id,
+        'reagendada',
+        'Cliente reagendó el turno.',
+        created.id
+      );
+
+      setSelectedApptForReschedule(null);
+    } finally {
+      setIsRescheduling(false);
+    }
   };
 
   // Complete & Charge submission
@@ -1344,15 +1357,17 @@ export const Agenda: React.FC<AgendaProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedApptForReschedule(null)}
-                  className="flex-1 py-2.5 px-4 bg-surface-container-high rounded-xl text-xs font-bold text-on-surface hover:bg-surface-container-high/80 active:scale-95 transition-all cursor-pointer"
+                  disabled={isRescheduling}
+                  className="flex-1 py-2.5 px-4 bg-surface-container-high rounded-xl text-xs font-bold text-on-surface hover:bg-surface-container-high/80 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 px-4 bg-primary text-white rounded-xl text-xs font-bold shadow-xs hover:bg-primary/95 active:scale-95 transition-all cursor-pointer"
+                  disabled={isRescheduling}
+                  className="flex-1 py-2.5 px-4 bg-primary text-white rounded-xl text-xs font-bold shadow-xs hover:bg-primary/95 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  Confirmar y Reagendar
+                  {isRescheduling ? 'Reagendando...' : 'Confirmar y Reagendar'}
                 </button>
               </div>
             </form>

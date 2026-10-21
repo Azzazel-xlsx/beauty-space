@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckCircle2,
@@ -91,10 +91,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const activeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Defense-in-depth: Deduplicate identical rapid dispatches within 500ms
-  const lastAddedRef = useRef<{ message: string; type: ToastType; time: number }>({
+  const lastAddedRef = useRef<{ message: string; type: ToastType; time: number; id: string }>({
     message: '',
     type: 'info',
     time: 0,
+    id: '',
   });
 
   const dismiss = useCallback((id: string) => {
@@ -146,11 +147,12 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         lastAddedRef.current.type === type &&
         now - lastAddedRef.current.time < 500
       ) {
-        return toasts[toasts.length - 1]?.id || 'duplicate';
+        return lastAddedRef.current.id || 'duplicate';
       }
-      lastAddedRef.current = { message, type, time: now };
 
       const id = options?.id || `toast-${now}-${Math.random().toString(36).substring(2, 7)}`;
+      lastAddedRef.current = { message, type, time: now, id };
+
       const duration = options?.duration !== undefined
         ? options.duration
         : type === 'loading'
@@ -179,7 +181,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       return id;
     },
-    [toasts]
+    []
   );
 
   const update = useCallback(
@@ -265,22 +267,28 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [loading, update]
   );
 
-  const toastMethods = {
-    success,
-    error,
-    warning,
-    info,
-    loading,
-    dismiss,
-    dismissAll,
-    update,
-    promise,
-  };
+  const toastMethods = useMemo(
+    () => ({
+      success,
+      error,
+      warning,
+      info,
+      loading,
+      dismiss,
+      dismissAll,
+      update,
+      promise,
+    }),
+    [success, error, warning, info, loading, dismiss, dismissAll, update, promise]
+  );
 
-  const contextValue: ToastContextType = {
-    ...toastMethods,
-    toast: toastMethods,
-  };
+  const contextValue: ToastContextType = useMemo(
+    () => ({
+      ...toastMethods,
+      toast: toastMethods,
+    }),
+    [toastMethods]
+  );
 
   return (
     <ToastContext.Provider value={contextValue}>
